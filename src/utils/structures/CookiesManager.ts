@@ -41,7 +41,8 @@ export class CookiesManager {
     public async initialize(): Promise<void> {
         container.logger.info("[Cookies] Initializing cookie manager...");
 
-        const restored = this.loginManager.restoreSessionFromDB();
+        await this.loginManager.initDB();
+        const restored = await this.loginManager.restoreSessionFromDB();
 
         if (this.loginManager.hasCookies()) {
             container.logger.info(

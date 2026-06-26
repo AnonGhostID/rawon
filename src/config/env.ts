@@ -93,3 +93,7 @@ export const debugMode = process.env.DEBUG_MODE?.toLowerCase() === "yes";
 
 export const stegripeApiUrl = "https://api.stegripe.org";
 export const stegripeApiLyricsToken = process.env.STEGRIPE_API_LYRICS_TOKEN ?? "";
+
+export const tursoUrl = process.env.TURSO_DATABASE_URL ?? "";
+export const tursoAuthToken = process.env.TURSO_AUTH_TOKEN ?? "";
+export const useRemoteDb = tursoUrl.length > 0;

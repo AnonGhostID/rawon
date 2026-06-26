@@ -23,8 +23,8 @@ import {
     resolveBuildId,
 } from "@puppeteer/browsers";
 import { container } from "@sapphire/framework";
-import Database from "better-sqlite3";
 import puppeteer, { type Browser, type Cookie, type Page, type Target } from "puppeteer-core";
+import { createBackend, type DatabaseBackend } from "./DatabaseBackend.js";
 
 export type LoginStatus = "idle" | "waiting_for_login" | "logged_in" | "error";
 
@@ -81,7 +81,7 @@ export class GoogleLoginManager {
     private readonly paths: BrowserPaths;
     private readonly chromiumPath: string | null;
     private readonly devtoolsPort: number;
-    private readonly db: Database.Database;
+    private readonly db: DatabaseBackend;
     private actualPort: number | null = null;
     private chromeProcess: ChildProcess | null = null;
     private loginTargetId: string | null = null;
@@ -103,9 +103,11 @@ export class GoogleLoginManager {
         this.devtoolsPort = devtoolsPort;
 
         this.ensureDirectories();
-        this.db = new Database(this.paths.dbPath);
-        this.db.pragma("journal_mode = WAL");
-        this.db.exec(`
+        this.db = createBackend(this.paths.dbPath);
+    }
+
+    public async initDB(): Promise<void> {
+        await this.db.exec(`
             CREATE TABLE IF NOT EXISTS login_session (
                 id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
                 was_running INTEGER NOT NULL DEFAULT 0,
@@ -116,7 +118,7 @@ export class GoogleLoginManager {
         `);
 
         try {
-            this.db.exec("ALTER TABLE login_session ADD COLUMN visitor_data TEXT");
+            await this.db.exec("ALTER TABLE login_session ADD COLUMN visitor_data TEXT");
         } catch {}
     }
 
@@ -888,7 +890,7 @@ export class GoogleLoginManager {
                 await this.extractAccountName();
 
                 this.status = "logged_in";
-                this.saveSessionState();
+                await this.saveSessionState();
 
                 await this.closeBrowserOnly();
 
@@ -1592,7 +1594,7 @@ export class GoogleLoginManager {
             } catch {}
         }
 
-        this.clearSessionState();
+        await this.clearSessionState();
         this.browser = null;
         this.page = null;
         this.chromeProcess = null;
@@ -1619,8 +1621,8 @@ export class GoogleLoginManager {
         return LOGIN_TIMEOUT_MS;
     }
 
-    public restoreSessionFromDB(): boolean {
-        const state = this.getPersistedSessionState();
+    public async restoreSessionFromDB(): Promise<boolean> {
+        const state = await this.getPersistedSessionState();
         if (!state?.wasRunning) {
             return false;
         }
@@ -1629,7 +1631,7 @@ export class GoogleLoginManager {
             container.logger.info(
                 "[GoogleLogin] Session state found but cookies missing, clearing state",
             );
-            this.clearSessionState();
+            await this.clearSessionState();
             return false;
         }
 
@@ -1649,43 +1651,40 @@ export class GoogleLoginManager {
         return true;
     }
 
-    private saveSessionState(): void {
+    private async saveSessionState(): Promise<void> {
         try {
-            this.db
-                .prepare(
-                    `INSERT INTO login_session (id, was_running, email, visitor_data, saved_at)
-                     VALUES (1, 1, ?, ?, ?)
-                     ON CONFLICT(id) DO UPDATE SET was_running = 1, email = excluded.email, visitor_data = excluded.visitor_data, saved_at = excluded.saved_at`,
-                )
-                .run(this.loginEmail, this.visitorData, Date.now());
+            await this.db.run(
+                `INSERT INTO login_session (id, was_running, email, visitor_data, saved_at)
+                 VALUES (1, 1, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET was_running = 1, email = excluded.email, visitor_data = excluded.visitor_data, saved_at = excluded.saved_at`,
+                this.loginEmail,
+                this.visitorData,
+                Date.now(),
+            );
             container.logger.debug("[GoogleLogin] Session state saved");
         } catch (err) {
             container.logger.warn("[GoogleLogin] Failed to save session state:", err);
         }
     }
 
-    private clearSessionState(): void {
+    private async clearSessionState(): Promise<void> {
         try {
-            this.db.prepare("DELETE FROM login_session WHERE id = 1").run();
+            await this.db.run("DELETE FROM login_session WHERE id = 1");
             container.logger.debug("[GoogleLogin] Session state cleared");
         } catch {}
     }
 
-    private getPersistedSessionState(): {
+    private async getPersistedSessionState(): Promise<{
         wasRunning: boolean;
         email: string | null;
         visitorData: string | null;
-    } | null {
+    } | null> {
         try {
-            const row = this.db
-                .prepare("SELECT was_running, email, visitor_data FROM login_session WHERE id = 1")
-                .get() as
-                | {
-                      was_running: number;
-                      email: string | null;
-                      visitor_data: string | null;
-                  }
-                | undefined;
+            const row = await this.db.get<{
+                was_running: number;
+                email: string | null;
+                visitor_data: string | null;
+            }>("SELECT was_running, email, visitor_data FROM login_session WHERE id = 1");
             if (!row?.was_running) {
                 return null;
             }

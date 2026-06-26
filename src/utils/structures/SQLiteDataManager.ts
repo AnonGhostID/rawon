@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
-import { type BotSettings, type GuildData } from "../../typings/index.js";
+import { type BotSettings, type GuildData, type LoopMode } from "../../typings/index.js";
+import { createBackend, type DatabaseBackend } from "./DatabaseBackend.js";
 import { OperationManager } from "./OperationManager.js";
 
 export const BOT_SETTINGS_DEFAULTS: BotSettings = {
@@ -16,22 +16,13 @@ export const BOT_SETTINGS_DEFAULTS: BotSettings = {
 };
 
 export class SQLiteDataManager<T extends Record<string, GuildData> = Record<string, GuildData>> {
-    private readonly db: Database.Database;
+    private readonly db: DatabaseBackend;
     private readonly manager = new OperationManager();
     private _data: T | null = null;
 
     public constructor(public readonly dbPath: string) {
         this.ensureDirectory();
-        this.db = new Database(this.dbPath, {
-            verbose: undefined,
-        });
-
-        this.db.pragma("journal_mode = WAL");
-        this.db.pragma("foreign_keys = ON");
-
-        this.initSchema();
-        this.loadBotSettings();
-        void this.load();
+        this.db = createBackend(this.dbPath);
     }
 
     private ensureDirectory(): void {
@@ -41,8 +32,8 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         }
     }
 
-    private initSchema(): void {
-        this.db.exec(`
+    private async initSchema(): Promise<void> {
+        await this.db.exec(`
             CREATE TABLE IF NOT EXISTS guilds (
                 guild_id TEXT PRIMARY KEY,
                 locale TEXT,
@@ -51,7 +42,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             )
         `);
 
-        this.db.exec(`
+        await this.db.exec(`
             CREATE TABLE IF NOT EXISTS request_channels (
                 guild_id TEXT NOT NULL,
                 bot_id TEXT NOT NULL,
@@ -62,7 +53,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             )
         `);
 
-        this.db.exec(`
+        await this.db.exec(`
             CREATE TABLE IF NOT EXISTS player_states (
                 guild_id TEXT NOT NULL,
                 bot_id TEXT NOT NULL,
@@ -76,7 +67,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             )
         `);
 
-        this.db.exec(`
+        await this.db.exec(`
             CREATE TABLE IF NOT EXISTS queue_states (
                 guild_id TEXT NOT NULL,
                 bot_id TEXT NOT NULL,
@@ -90,16 +81,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             )
         `);
 
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS cookies_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                current_cookie_index INTEGER DEFAULT 1,
-                failed_cookies_json TEXT DEFAULT '[]',
-                failure_timestamps_json TEXT DEFAULT '{}'
-            )
-        `);
-
-        this.db.exec(`
+        await this.db.exec(`
             CREATE INDEX IF NOT EXISTS idx_queue_states_guild ON queue_states(guild_id);
             CREATE INDEX IF NOT EXISTS idx_queue_states_bot ON queue_states(bot_id);
             CREATE INDEX IF NOT EXISTS idx_player_states_guild ON player_states(guild_id);
@@ -108,39 +90,39 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             CREATE INDEX IF NOT EXISTS idx_request_channels_bot ON request_channels(bot_id);
         `);
 
-        const tableInfo = this.db.prepare("PRAGMA table_info(guilds)").all() as Array<{
+        const tableInfo = await this.db.pragmaAll<{
             cid: number;
             name: string;
             type: string;
             notnull: number;
             dflt_value: string | null;
             pk: number;
-        }>;
+        }>("PRAGMA table_info(guilds)");
 
         const hasPrefixColumn = tableInfo.some((col) => col.name === "prefix");
         if (!hasPrefixColumn) {
-            this.db.exec(`
+            await this.db.exec(`
                 ALTER TABLE guilds ADD COLUMN prefix TEXT DEFAULT '';
             `);
         }
 
-        const playerStateInfo = this.db.prepare("PRAGMA table_info(player_states)").all() as Array<{
+        const playerStateInfo = await this.db.pragmaAll<{
             cid: number;
             name: string;
             type: string;
             notnull: number;
             dflt_value: string | null;
             pk: number;
-        }>;
+        }>("PRAGMA table_info(player_states)");
 
         const hasAutoplayColumn = playerStateInfo.some((col) => col.name === "autoplay");
         if (!hasAutoplayColumn) {
-            this.db.exec(`
+            await this.db.exec(`
                 ALTER TABLE player_states ADD COLUMN autoplay INTEGER DEFAULT 0;
             `);
         }
 
-        this.db.exec(`
+        await this.db.exec(`
             CREATE TABLE IF NOT EXISTS bot_settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 embed_color TEXT,
@@ -154,7 +136,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             )
         `);
 
-        this.db.exec(`
+        await this.db.exec(`
             INSERT OR IGNORE INTO bot_settings (id) VALUES (1)
         `);
     }
@@ -166,21 +148,37 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
     public async load(): Promise<T | null> {
         try {
             await this.manager.add(async () => {
-                const guilds = this.db.prepare("SELECT * FROM guilds").all() as Array<{
+                const guilds = await this.db.all<{
                     guild_id: string;
                     locale: string | null;
                     dj_enable: number;
                     dj_role: string | null;
                     prefix: string | null;
-                }>;
+                }>("SELECT * FROM guilds");
 
-                const requestChannels = this.db
-                    .prepare("SELECT * FROM request_channels")
-                    .all() as Array<{
+                const requestChannels = await this.db.all<{
                     guild_id: string;
                     channel_id: string | null;
                     message_id: string | null;
-                }>;
+                }>("SELECT * FROM request_channels");
+
+                const playerStates = await this.db.all<{
+                    guild_id: string;
+                    loop_mode: string;
+                    shuffle: number;
+                    autoplay: number;
+                    volume: number;
+                    filters_json: string | null;
+                }>("SELECT * FROM player_states");
+
+                const queueStates = await this.db.all<{
+                    guild_id: string;
+                    text_channel_id: string;
+                    voice_channel_id: string;
+                    songs_json: string;
+                    current_song_key: string | null;
+                    current_position: number;
+                }>("SELECT * FROM queue_states");
 
                 const data: Record<string, GuildData> = {};
 
@@ -221,6 +219,40 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                     };
                 }
 
+                for (const ps of playerStates) {
+                    if (!data[ps.guild_id]) {
+                        data[ps.guild_id] = {};
+                    }
+                    let filters: Record<string, boolean> = {};
+                    if (ps.filters_json) {
+                        try {
+                            filters = JSON.parse(ps.filters_json) as Record<string, boolean>;
+                        } catch {
+                            filters = {};
+                        }
+                    }
+                    data[ps.guild_id].playerState = {
+                        loopMode: (ps.loop_mode ?? "OFF") as LoopMode,
+                        shuffle: ps.shuffle === 1,
+                        autoplay: ps.autoplay === 1,
+                        volume: ps.volume ?? this.botSettings.defaultVolume,
+                        filters,
+                    };
+                }
+
+                for (const qs of queueStates) {
+                    if (!data[qs.guild_id]) {
+                        data[qs.guild_id] = {};
+                    }
+                    data[qs.guild_id].queueState = {
+                        textChannelId: qs.text_channel_id,
+                        voiceChannelId: qs.voice_channel_id,
+                        songs: JSON.parse(qs.songs_json),
+                        currentSongKey: qs.current_song_key,
+                        currentPosition: qs.current_position,
+                    };
+                }
+
                 this._data = data as T;
             });
 
@@ -235,9 +267,10 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         await this.manager.add(async () => {
             const dat = data();
 
-            const transaction = this.db.transaction(() => {
-                for (const [guildId, guildData] of Object.entries(dat) as [string, GuildData][]) {
-                    const guildStmt = this.db.prepare(`
+            const statements: { sql: string; params: (string | number | null)[] }[] = [];
+            for (const [guildId, guildData] of Object.entries(dat) as [string, GuildData][]) {
+                statements.push({
+                    sql: `
                         INSERT INTO guilds (guild_id, locale, dj_enable, dj_role, prefix)
                         VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(guild_id) DO UPDATE SET
@@ -245,55 +278,34 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                             dj_enable = excluded.dj_enable,
                             dj_role = excluded.dj_role,
                             prefix = excluded.prefix
-                    `);
-
-                    guildStmt.run(
+                    `,
+                    params: [
                         guildId,
                         guildData.locale ?? null,
                         guildData.dj?.enable ? 1 : 0,
                         guildData.dj?.role ?? null,
                         guildData.prefix ?? null,
-                    );
-                }
-            });
+                    ] as (string | number | null)[],
+                });
+            }
 
-            transaction();
+            await this.db.transaction(statements);
         });
 
         return this.load() as Promise<T | null>;
     }
 
-    public getGuildIdsWithQueueState(botId: string): string[] {
-        const rows = this.db
-            .prepare("SELECT guild_id FROM queue_states WHERE bot_id = ?")
-            .all(botId) as { guild_id: string }[];
-        return rows.map((row) => row.guild_id);
+    public getGuildIdsWithQueueState(_botId: string): string[] {
+        if (!this._data) {
+            return [];
+        }
+        return Object.entries(this._data)
+            .filter(([, gd]) => gd?.queueState != null)
+            .map(([gid]) => gid);
     }
 
-    public getQueueState(guildId: string, botId: string): GuildData["queueState"] | null {
-        const result = this.db
-            .prepare("SELECT * FROM queue_states WHERE guild_id = ? AND bot_id = ?")
-            .get(guildId, botId) as
-            | {
-                  text_channel_id: string;
-                  voice_channel_id: string;
-                  songs_json: string;
-                  current_song_key: string | null;
-                  current_position: number;
-              }
-            | undefined;
-
-        if (!result) {
-            return null;
-        }
-
-        return {
-            textChannelId: result.text_channel_id,
-            voiceChannelId: result.voice_channel_id,
-            songs: JSON.parse(result.songs_json),
-            currentSongKey: result.current_song_key,
-            currentPosition: result.current_position,
-        };
+    public getQueueState(guildId: string, _botId: string): GuildData["queueState"] | null {
+        return this._data?.[guildId]?.queueState ?? null;
     }
 
     public async saveQueueState(
@@ -306,14 +318,21 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         }
 
         await this.manager.add(async () => {
-            const guildStmt = this.db.prepare(`
+            await this.db.run(
+                `
                 INSERT INTO guilds (guild_id, locale, dj_enable, dj_role, prefix)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id) DO NOTHING
-            `);
-            guildStmt.run(guildId, null, 0, null, null);
+                `,
+                guildId,
+                null,
+                0,
+                null,
+                null,
+            );
 
-            const stmt = this.db.prepare(`
+            await this.db.run(
+                `
                 INSERT INTO queue_states (guild_id, bot_id, text_channel_id, voice_channel_id, songs_json, current_song_key, current_position)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, bot_id) DO UPDATE SET
@@ -322,9 +341,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                     songs_json = excluded.songs_json,
                     current_song_key = excluded.current_song_key,
                     current_position = excluded.current_position
-            `);
-
-            stmt.run(
+                `,
                 guildId,
                 botId,
                 queueState.textChannelId,
@@ -333,50 +350,34 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 queueState.currentSongKey ?? null,
                 queueState.currentPosition ?? 0,
             );
+
+            if (!this._data) {
+                this._data = {} as T;
+            }
+            const data = this._data as Record<string, GuildData>;
+            if (!data[guildId]) {
+                data[guildId] = {};
+            }
+            data[guildId].queueState = queueState;
         });
     }
 
     public async deleteQueueState(guildId: string, botId: string): Promise<void> {
         await this.manager.add(async () => {
-            this.db
-                .prepare("DELETE FROM queue_states WHERE guild_id = ? AND bot_id = ?")
-                .run(guildId, botId);
+            await this.db.run(
+                "DELETE FROM queue_states WHERE guild_id = ? AND bot_id = ?",
+                guildId,
+                botId,
+            );
+
+            if (this._data?.[guildId]) {
+                this._data[guildId].queueState = undefined;
+            }
         });
     }
 
-    public getPlayerState(guildId: string, botId: string): GuildData["playerState"] | null {
-        const result = this.db
-            .prepare("SELECT * FROM player_states WHERE guild_id = ? AND bot_id = ?")
-            .get(guildId, botId) as
-            | {
-                  loop_mode: string;
-                  shuffle: number;
-                  autoplay: number;
-                  volume: number;
-                  filters_json: string | null;
-              }
-            | undefined;
-
-        if (!result) {
-            return null;
-        }
-
-        let filters: Record<string, boolean> = {};
-        if (result.filters_json) {
-            try {
-                filters = JSON.parse(result.filters_json) as Record<string, boolean>;
-            } catch {
-                filters = {};
-            }
-        }
-
-        return {
-            loopMode: (result.loop_mode ?? "OFF") as "OFF" | "SONG" | "QUEUE",
-            shuffle: result.shuffle === 1,
-            autoplay: result.autoplay === 1,
-            volume: result.volume ?? this.botSettings.defaultVolume,
-            filters,
-        };
+    public getPlayerState(guildId: string, _botId: string): GuildData["playerState"] | null {
+        return this._data?.[guildId]?.playerState ?? null;
     }
 
     public async savePlayerState(
@@ -389,14 +390,21 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         }
 
         await this.manager.add(async () => {
-            const guildStmt = this.db.prepare(`
+            await this.db.run(
+                `
                 INSERT INTO guilds (guild_id, locale, dj_enable, dj_role, prefix)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id) DO NOTHING
-            `);
-            guildStmt.run(guildId, null, 0, null, null);
+                `,
+                guildId,
+                null,
+                0,
+                null,
+                null,
+            );
 
-            const stmt = this.db.prepare(`
+            await this.db.run(
+                `
                 INSERT INTO player_states (guild_id, bot_id, loop_mode, shuffle, autoplay, volume, filters_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, bot_id) DO UPDATE SET
@@ -405,9 +413,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                     autoplay = excluded.autoplay,
                     volume = excluded.volume,
                     filters_json = excluded.filters_json
-            `);
-
-            stmt.run(
+                `,
                 guildId,
                 botId,
                 playerState.loopMode,
@@ -416,39 +422,37 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 playerState.volume,
                 JSON.stringify(playerState.filters),
             );
+
+            if (!this._data) {
+                this._data = {} as T;
+            }
+            const data = this._data as Record<string, GuildData>;
+            if (!data[guildId]) {
+                data[guildId] = {};
+            }
+            data[guildId].playerState = playerState;
         });
     }
 
     public async deletePlayerState(guildId: string, botId: string): Promise<void> {
         await this.manager.add(async () => {
-            this.db
-                .prepare("DELETE FROM player_states WHERE guild_id = ? AND bot_id = ?")
-                .run(guildId, botId);
+            await this.db.run(
+                "DELETE FROM player_states WHERE guild_id = ? AND bot_id = ?",
+                guildId,
+                botId,
+            );
+
+            if (this._data?.[guildId]) {
+                this._data[guildId].playerState = undefined;
+            }
         });
     }
 
     public getRequestChannel(
         guildId: string,
-        botId: string,
+        _botId: string,
     ): { channelId: string | null; messageId: string | null } | null {
-        const stmt = this.db.prepare(
-            "SELECT * FROM request_channels WHERE guild_id = ? AND bot_id = ?",
-        );
-        const row = stmt.get(guildId, botId) as
-            | {
-                  channel_id: string | null;
-                  message_id: string | null;
-              }
-            | undefined;
-
-        if (!row) {
-            return null;
-        }
-
-        return {
-            channelId: row.channel_id,
-            messageId: row.message_id,
-        };
+        return this._data?.[guildId]?.requestChannel ?? null;
     }
 
     public async saveRequestChannel(
@@ -458,70 +462,91 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         messageId: string | null,
     ): Promise<void> {
         await this.manager.add(async () => {
-            const guildStmt = this.db.prepare(`
+            await this.db.run(
+                `
                 INSERT INTO guilds (guild_id, locale, dj_enable, dj_role, prefix)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id) DO NOTHING
-            `);
-            guildStmt.run(guildId, null, 0, null, null);
+                `,
+                guildId,
+                null,
+                0,
+                null,
+                null,
+            );
 
-            const stmt = this.db.prepare(`
+            await this.db.run(
+                `
                 INSERT INTO request_channels (guild_id, bot_id, channel_id, message_id)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(guild_id, bot_id) DO UPDATE SET
                     channel_id = excluded.channel_id,
                     message_id = excluded.message_id
-            `);
-            stmt.run(guildId, botId, channelId, messageId);
+                `,
+                guildId,
+                botId,
+                channelId,
+                messageId,
+            );
+
+            if (!this._data) {
+                this._data = {} as T;
+            }
+            const data = this._data as Record<string, GuildData>;
+            if (!data[guildId]) {
+                data[guildId] = {};
+            }
+            data[guildId].requestChannel = { channelId, messageId };
         });
     }
 
     public async deleteRequestChannel(guildId: string, botId: string): Promise<void> {
         await this.manager.add(async () => {
-            this.db
-                .prepare("DELETE FROM request_channels WHERE guild_id = ? AND bot_id = ?")
-                .run(guildId, botId);
+            await this.db.run(
+                "DELETE FROM request_channels WHERE guild_id = ? AND bot_id = ?",
+                guildId,
+                botId,
+            );
+
+            if (this._data?.[guildId]) {
+                this._data[guildId].requestChannel = undefined;
+            }
         });
     }
 
-    public getBotsWithRequestChannel(guildId: string): string[] {
-        const stmt = this.db.prepare("SELECT bot_id FROM request_channels WHERE guild_id = ?");
-        const rows = stmt.all(guildId) as { bot_id: string }[];
-        return rows.map((row) => row.bot_id);
-    }
-
-    public getBotsWithPlayerState(guildId: string): string[] {
-        const stmt = this.db.prepare("SELECT bot_id FROM player_states WHERE guild_id = ?");
-        const rows = stmt.all(guildId) as { bot_id: string }[];
-        return rows.map((row) => row.bot_id);
-    }
-
     public getAllGuildIds(): string[] {
-        const stmt = this.db.prepare("SELECT guild_id FROM guilds");
-        const rows = stmt.all() as { guild_id: string }[];
-        return rows.map((row) => row.guild_id);
+        if (!this._data) {
+            return [];
+        }
+        return Object.keys(this._data);
     }
 
     public getPrefix(guildId: string): string | null {
-        const result = this.db
-            .prepare("SELECT prefix FROM guilds WHERE guild_id = ?")
-            .get(guildId) as { prefix: string | null } | undefined;
-        return result?.prefix ?? null;
+        return this._data?.[guildId]?.prefix ?? null;
     }
 
     public async setPrefix(guildId: string, prefix: string | null): Promise<void> {
         await this.manager.add(async () => {
-            const updateStmt = this.db.prepare(`
+            const changes = await this.db.run(
+                `
                 UPDATE guilds SET prefix = ? WHERE guild_id = ?
-            `);
-            const changes = updateStmt.run(prefix, guildId).changes;
+                `,
+                prefix,
+                guildId,
+            );
 
             if (changes === 0) {
-                const insertStmt = this.db.prepare(`
+                await this.db.run(
+                    `
                     INSERT INTO guilds (guild_id, locale, dj_enable, dj_role, prefix)
                     VALUES (?, ?, ?, ?, ?)
-                `);
-                insertStmt.run(guildId, null, 0, null, prefix);
+                    `,
+                    guildId,
+                    null,
+                    0,
+                    null,
+                    prefix,
+                );
             }
 
             if (!this._data) {
@@ -541,54 +566,11 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
 
     public async deleteGuildData(guildId: string): Promise<void> {
         await this.manager.add(async () => {
-            this.db.prepare("DELETE FROM guilds WHERE guild_id = ?").run(guildId);
-        });
-    }
+            await this.db.run("DELETE FROM guilds WHERE guild_id = ?", guildId);
 
-    public getCookiesState(): {
-        currentCookieIndex: number;
-        failedCookies: number[];
-        failureTimestamps: Record<number, number>;
-    } | null {
-        const result = this.db.prepare("SELECT * FROM cookies_state WHERE id = 1").get() as
-            | {
-                  current_cookie_index: number;
-                  failed_cookies_json: string;
-                  failure_timestamps_json: string;
-              }
-            | undefined;
-
-        if (!result) {
-            return null;
-        }
-
-        return {
-            currentCookieIndex: result.current_cookie_index,
-            failedCookies: JSON.parse(result.failed_cookies_json),
-            failureTimestamps: JSON.parse(result.failure_timestamps_json),
-        };
-    }
-
-    public async saveCookiesState(state: {
-        currentCookieIndex: number;
-        failedCookies: number[];
-        failureTimestamps: Record<number, number>;
-    }): Promise<void> {
-        await this.manager.add(async () => {
-            const stmt = this.db.prepare(`
-                INSERT INTO cookies_state (id, current_cookie_index, failed_cookies_json, failure_timestamps_json)
-                VALUES (1, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    current_cookie_index = excluded.current_cookie_index,
-                    failed_cookies_json = excluded.failed_cookies_json,
-                    failure_timestamps_json = excluded.failure_timestamps_json
-            `);
-
-            stmt.run(
-                state.currentCookieIndex,
-                JSON.stringify(state.failedCookies),
-                JSON.stringify(state.failureTimestamps),
-            );
+            if (this._data) {
+                delete this._data[guildId];
+            }
         });
     }
 
@@ -598,19 +580,17 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         return this._botSettings;
     }
 
-    private loadBotSettings(): void {
-        const row = this.db.prepare("SELECT * FROM bot_settings WHERE id = 1").get() as
-            | {
-                  embed_color: string | null;
-                  yes_emoji: string | null;
-                  no_emoji: string | null;
-                  alt_prefix: string | null;
-                  request_channel_splash: string | null;
-                  default_volume: number | null;
-                  music_selection_type: string | null;
-                  enable_audio_cache: number | null;
-              }
-            | undefined;
+    private async loadBotSettings(): Promise<void> {
+        const row = await this.db.get<{
+            embed_color: string | null;
+            yes_emoji: string | null;
+            no_emoji: string | null;
+            alt_prefix: string | null;
+            request_channel_splash: string | null;
+            default_volume: number | null;
+            music_selection_type: string | null;
+            enable_audio_cache: number | null;
+        }>("SELECT * FROM bot_settings WHERE id = 1");
 
         if (!row) {
             this._botSettings = { ...BOT_SETTINGS_DEFAULTS };
@@ -656,15 +636,20 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         }
 
         await this.manager.add(async () => {
-            const stmt = this.db.prepare(`UPDATE bot_settings SET ${key} = ? WHERE id = 1`);
-            stmt.run(value);
+            await this.db.run(`UPDATE bot_settings SET ${key} = ? WHERE id = 1`, value);
             if (key === "yes_emoji") {
                 this._botSettings.yesEmoji = (value as string) ?? BOT_SETTINGS_DEFAULTS.yesEmoji;
             } else if (key === "no_emoji") {
                 this._botSettings.noEmoji = (value as string) ?? BOT_SETTINGS_DEFAULTS.noEmoji;
             }
-            this.loadBotSettings();
+            await this.loadBotSettings();
         });
+    }
+
+    public async init(): Promise<void> {
+        await this.initSchema();
+        await this.loadBotSettings();
+        await this.load();
     }
 
     public close(): void {

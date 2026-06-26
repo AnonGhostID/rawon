@@ -283,6 +283,10 @@ export class Rawon extends SapphireClient {
         this.startTimestamp = Date.now();
         setCookiesManager(this.cookies);
 
+        const dbStart = Date.now();
+        await this.data.init();
+        container.logger.debug(`[Rawon] DB init in ${Date.now() - dbStart}ms`);
+
         try {
             const cookiesStart = Date.now();
             await this.cookies.initialize();
