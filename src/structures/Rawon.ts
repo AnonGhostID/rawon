@@ -196,7 +196,7 @@ class CommandsCompatibility {
         );
 
         if (ctxCommand.contextRun) {
-            container.logger.info(`[CommandsCompat] Executing command "${commandName}"`);
+            container.logger.debug(`[CommandsCompat] Executing command "${commandName}"`);
             void ctxCommand.contextRun(ctx);
         }
     }

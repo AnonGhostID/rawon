@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/style/useNamingConvention: disable naming convention rule for this file */
 import { ApplyOptions } from "@sapphire/decorators";
 import { type Command } from "@sapphire/framework";
 import { type CommandContext, ContextCommand } from "@stegripe/command-context";
@@ -17,6 +16,7 @@ import { createEmbed } from "../../utils/functions/createEmbed.js";
 import { formatBoldPrefixedCommand } from "../../utils/functions/formatCodeSpan.js";
 import { getEffectivePrefix } from "../../utils/functions/getEffectivePrefix.js";
 import { i18n__, i18n__mf } from "../../utils/functions/i18n.js";
+import { isVoiceDeafened } from "../../utils/functions/voiceStateGuards.js";
 import { checkQuery, handleVideos, searchTrack } from "../../utils/handlers/GeneralUtil.js";
 
 @ApplyOptions<Command.Options>({
@@ -59,6 +59,12 @@ export class PlayCommand extends ContextCommand {
         const client = this.getClient(ctx);
         const __ = i18n__(client, ctx.guild);
         const __mf = i18n__mf(client, ctx.guild);
+
+        if (isVoiceDeafened(member)) {
+            return ctx.reply({
+                embeds: [createEmbed("warn", __("requestChannel.deafened"))],
+            });
+        }
 
         if (ctx.isCommandInteraction() && !localCtx.deferred) {
             await localCtx.deferReply();
@@ -123,6 +129,17 @@ export class PlayCommand extends ContextCommand {
         }
 
         const queryCheck = checkQuery(query ?? "");
+        const isCollectionQuery = queryCheck.type === "playlist" || queryCheck.type === "artist";
+
+        if (localCtx.deferred) {
+            const notice = isCollectionQuery
+                ? __mf("requestChannel.resolvingPlaylist")
+                : __mf("requestChannel.resolvingSong");
+            await localCtx.editReply({
+                embeds: [createEmbed("info", `\ud83d\udd0d **|** ${notice}`)],
+            });
+        }
+
         const songs = await searchTrack(client, query ?? "").catch((error: unknown) => {
             client.logger.error("[PlayCommand] searchTrack failed:", error);
             return undefined;
@@ -133,8 +150,6 @@ export class PlayCommand extends ContextCommand {
                 embeds: [createEmbed("error", __("commands.music.play.noSongData"), true)],
             });
         }
-
-        const isCollectionQuery = queryCheck.type === "playlist" || queryCheck.type === "artist";
 
         return handleVideos(
             client,

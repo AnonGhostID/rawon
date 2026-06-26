@@ -417,7 +417,17 @@
         "noChannel": "No request channel is currently set.",
         "currentChannel": "Current request channel: {channel}",
         "skipInProgress": "Please wait, a skip operation is already in progress.",
-        "noPermission": "You don't have permission to perform this action. Only DJ role, server managers, or the song requester can do this."
+        "noPermission": "You don't have permission to perform this action. Only DJ role, server managers, or the song requester can do this.",
+        "addedPlaylistSkipped": "Skipped {count} item(s): {reason}.",
+        "skippedReasonUnavailable": "private/deleted or unavailable",
+        "skippedReasonUnresolved": "could not be matched to a playable song",
+        "skippedReasonSkipped": "duplicate, private/deleted, or unavailable",
+        "resolvingPlaylist": "Resolving playlist, please wait\u2026",
+        "resolvingSong": "Resolving song, please wait\u2026",
+        "addingPlaylistToQueue": "Adding to queue: {current}/{total}\u2026",
+        "deafened": "You are deafened. Please undeafen yourself to use music commands.",
+        "requesterDeafPaused": "The requester deafened or left. Playback paused.",
+        "requesterLeftPaused": "The requester left the voice channel. Playback paused."
     },
     "reusable": {
         "invalidUsage": "Invalid usage. Please use {prefix} {name} for more information.",

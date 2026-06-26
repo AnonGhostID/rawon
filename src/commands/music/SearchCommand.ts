@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/style/useNamingConvention: disable naming convention rule for this file */
 import { Buffer } from "node:buffer";
 import { setTimeout } from "node:timers";
 import { ApplyOptions } from "@sapphire/decorators";
@@ -211,6 +210,17 @@ export class SearchCommand extends ContextCommand {
                 | undefined;
             playCmd2?.contextRun?.(playCtx as CommandContext & LocalCommandContext);
             return;
+        }
+
+        if (localCtx.deferred) {
+            await localCtx.editReply({
+                embeds: [
+                    createEmbed(
+                        "info",
+                        `\ud83d\udd0d **|** ${__mf("requestChannel.resolvingSong")}`,
+                    ),
+                ],
+            });
         }
 
         const tracks = await searchTrack(client, query ?? "", source as "soundcloud" | "youtube")

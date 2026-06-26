@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/style/useNamingConvention: disable naming convention rule for this file */
 import { clearInterval, setInterval } from "node:timers";
 import { type AudioPlayerState, type AudioResource } from "@discordjs/voice";
 import { ApplyOptions } from "@sapphire/decorators";
@@ -22,7 +21,9 @@ import { type QueueSong } from "../../typings/index.js";
 import { haveQueue } from "../../utils/decorators/MusicUtil.js";
 import { createEmbed } from "../../utils/functions/createEmbed.js";
 import { createProgressBar } from "../../utils/functions/createProgressBar.js";
+import { formatBoldMarkdownLink } from "../../utils/functions/formatMarkdown.js";
 import { i18n__, i18n__mf } from "../../utils/functions/i18n.js";
+import { copyMusicCommandTarget } from "../../utils/functions/musicCommandTarget.js";
 import { normalizeTime } from "../../utils/functions/normalizeTime.js";
 
 @ApplyOptions<Command.Options>({
@@ -99,7 +100,7 @@ export class NowPlayingCommand extends ContextCommand {
                     const requesterLine = queueSong?.requester
                         ? `\n\n${__("commands.music.nowplaying.requestedBy")}: ${queueSong.requester.toString()}`
                         : "";
-                    embed.data.description += `**[${song.title}](${song.url})**\n${progressLine}${requesterLine}`;
+                    embed.data.description += `${formatBoldMarkdownLink(song.title, song.url)}\n${progressLine}${requesterLine}`;
                 } else {
                     embed.data.description += __("commands.music.nowplaying.emptyQueue");
                 }
@@ -180,6 +181,7 @@ export class NowPlayingCommand extends ContextCommand {
         collector
             .on("collect", async (i) => {
                 const newCtx = new LocalCommandContext(i as Interaction, []);
+                copyMusicCommandTarget(ctx as CommandContext & LocalCommandContext, newCtx);
                 let cmdName = "";
 
                 switch (i.customId) {

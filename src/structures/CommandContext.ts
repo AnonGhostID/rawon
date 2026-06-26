@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { setTimeout } from "node:timers";
 import {
     ActionRowBuilder,
     type APIMessageTopLevelComponent,
@@ -37,6 +38,8 @@ export class CommandContext {
     public additionalArgs = new Collection<string, any>();
     public channel: TextBasedChannel | null;
     public guild;
+    public readonly originChannel: TextBasedChannel | null;
+    public readonly originGuild;
 
     public constructor(
         public readonly context:
@@ -49,6 +52,27 @@ export class CommandContext {
     ) {
         this.channel = this.context.channel;
         this.guild = this.context.guild;
+        this.originChannel = this.context.channel;
+        this.originGuild = this.context.guild;
+    }
+
+    public scheduleReplyCleanup(delayMs = 60_000): void {
+        const ch = this.channel;
+        if (!ch || !("messages" in ch)) {
+            return;
+        }
+        setTimeout(() => {
+            void ch.messages
+                .fetch({ limit: 10 })
+                .then((msgs) => {
+                    for (const m of msgs.values()) {
+                        if (m.author.id === this.client.user?.id && m.deletable) {
+                            void m.delete().catch(() => null);
+                        }
+                    }
+                })
+                .catch(() => null);
+        }, delayMs);
     }
 
     private isPermissionLikeError(error: unknown): boolean {

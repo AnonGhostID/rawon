@@ -88,7 +88,17 @@ export async function searchTrack(
                 const newQueryData = checkQuery(scUrl.toString());
                 switch (newQueryData.type) {
                     case "track": {
-                        const track = await client.soundcloud.tracks.get(scUrl.toString());
+                        const track = await client.soundcloud.tracks
+                            .get(scUrl.toString())
+                            .catch((err: unknown) => {
+                                client.logger.warn(
+                                    `[searchTrack] SoundCloud track fetch failed: ${(err as Error).message}`,
+                                );
+                                return null;
+                            });
+                        if (!track) {
+                            break;
+                        }
 
                         result.items = [
                             {
@@ -105,18 +115,31 @@ export async function searchTrack(
                     }
 
                     case "playlist": {
-                        const playlist = await client.soundcloud.playlists.get(scUrl.toString());
-                        const tracks = playlist.tracks.map(
-                            (track): Song => ({
-                                duration: track.full_duration,
-                                id: track.id.toString(),
-                                thumbnail: getSoundCloudThumbnail(
-                                    track.artwork_url ?? track.user?.avatar_url,
-                                ),
-                                title: track.title,
-                                url: track.permalink_url,
-                            }),
-                        );
+                        const playlist = await client.soundcloud.playlists
+                            .get(scUrl.toString())
+                            .catch((err: unknown) => {
+                                client.logger.warn(
+                                    `[searchTrack] SoundCloud playlist fetch failed: ${(err as Error).message}`,
+                                );
+                                return null;
+                            });
+                        if (!playlist) {
+                            break;
+                        }
+
+                        const tracks = playlist.tracks
+                            .filter((t) => t != null && t.id != null)
+                            .map(
+                                (track): Song => ({
+                                    duration: track.full_duration,
+                                    id: track.id.toString(),
+                                    thumbnail: getSoundCloudThumbnail(
+                                        track.artwork_url ?? track.user?.avatar_url,
+                                    ),
+                                    title: track.title,
+                                    url: track.permalink_url,
+                                }),
+                            );
 
                         result.items = tracks;
                         result.playlist = {
@@ -366,7 +389,7 @@ export async function searchTrack(
                         )) as SpotifyResolveResult;
                         const songs = spotifyResult.tracks;
                         const trackResults: Song[] = [];
-                        const batches = chunk(songs, 5);
+                        const batches = chunk(songs, 20);
                         for (const batch of batches) {
                             const batchResults = await Promise.all(
                                 batch.map(async (x): Promise<Song | null> => {

@@ -29,6 +29,17 @@ import {
     shouldRequeueOnError,
 } from "../YTDLUtil.js";
 
+function isPrematureClose(err: unknown): boolean {
+    if (!(err instanceof Error)) {
+        return false;
+    }
+    const msg = err.message ?? "";
+    return (
+        msg.includes("Premature close") ||
+        (isErrnoException(err) && err.code === "ERR_STREAM_PREMATURE_CLOSE")
+    );
+}
+
 export async function play(
     guild: Guild,
     nextSong?: string,
@@ -148,11 +159,7 @@ export async function play(
 
                 (ffmpegStream as FfmpegStreamWithEvents).on?.("error", (e: unknown) => {
                     queue.client.logger.error("[PLAY_HANDLER][FFMPEG_ERROR]", e);
-                    const errStr = String(e ?? "");
-                    const isPremature =
-                        errStr.includes("Premature close") ||
-                        (isErrnoException(e) && e.code === "ERR_STREAM_PREMATURE_CLOSE");
-                    if (isPremature) {
+                    if (isPrematureClose(e)) {
                         queue.client.logger.debug(
                             "[PLAY_HANDLER] Ignoring premature-close ffmpeg error",
                             e,
@@ -241,11 +248,7 @@ export async function play(
                 });
                 (ffmpegStream as FfmpegStreamWithEvents).on?.("error", (e: unknown) => {
                     queue.client.logger.error("[PLAY_HANDLER][FFMPEG_ERROR]", e);
-                    const errStr = String(e ?? "");
-                    const isPremature =
-                        errStr.includes("Premature close") ||
-                        (isErrnoException(e) && e.code === "ERR_STREAM_PREMATURE_CLOSE");
-                    if (isPremature) {
+                    if (isPrematureClose(e)) {
                         queue.client.logger.debug(
                             "[PLAY_HANDLER] Ignoring premature-close ffmpeg error",
                             e,
@@ -485,11 +488,7 @@ export async function play(
         resource.volume?.setVolumeLogarithmic(queue.volume / 100);
 
         resource.playStream.on("error", (e: unknown) => {
-            const errStr = String(e ?? "");
-            const isPremature =
-                errStr.includes("Premature close") ||
-                (isErrnoException(e) && e.code === "ERR_STREAM_PREMATURE_CLOSE");
-            if (isPremature) {
+            if (isPrematureClose(e)) {
                 queue.client.logger.debug(
                     "[PLAY_HANDLER] Ignoring premature-close resource stream error",
                 );

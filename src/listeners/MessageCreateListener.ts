@@ -17,36 +17,9 @@ import { createEmbed } from "../utils/functions/createEmbed.js";
 import { createVoiceAdapter } from "../utils/functions/createVoiceAdapter.js";
 import { formatBoldCodeSpan } from "../utils/functions/formatCodeSpan.js";
 import { i18n__, i18n__mf } from "../utils/functions/i18n.js";
+import { isPlaybackMusicCommand } from "../utils/functions/musicCommandTarget.js";
 import { searchTrack } from "../utils/handlers/GeneralUtil.js";
 import { play } from "../utils/handlers/general/play.js";
-
-const MUSIC_COMMANDS = [
-    "play",
-    "p",
-    "add",
-    "search",
-    "volume",
-    "vol",
-    "loop",
-    "repeat",
-    "shuffle",
-    "autoplay",
-    "ap",
-    "filter",
-    "skip",
-    "skipto",
-    "pause",
-    "resume",
-    "stop",
-    "disconnect",
-    "dc",
-    "remove",
-    "seek",
-    "nowplaying",
-    "np",
-    "queue",
-    "q",
-];
 
 @ApplyOptions<ListenerOptions>({
     event: Events.MessageCreate,
@@ -187,7 +160,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
 
                     const cmdContent = message.content.slice(actualPrefix.length).trim();
                     const cmdName = cmdContent.split(/ +/u)[0]?.toLowerCase();
-                    const isMusicCommand = cmdName && MUSIC_COMMANDS.includes(cmdName);
+                    const isMusicCommand = cmdName && isPlaybackMusicCommand(cmdName);
 
                     if (isMusicCommand) {
                         let member = thisBotGuild.members.cache.get(message.author.id);
@@ -276,7 +249,6 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                 const collector: MessageCollector = textChannel.createMessageCollector({
                     filter: (msg: Message) => msg.author.id === client.user?.id,
                     time: 30_000,
-                    max: 5,
                 });
 
                 collector.on("collect", (botMsg: Message) => {
@@ -335,7 +307,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
 
                 const cmdContent = message.content.slice(actualPrefix.length).trim();
                 const cmdName = cmdContent.split(/ +/u)[0]?.toLowerCase();
-                const isMusicCommand = cmdName && MUSIC_COMMANDS.includes(cmdName);
+                const isMusicCommand = cmdName && isPlaybackMusicCommand(cmdName);
 
                 if (isMusicCommand) {
                     let member = thisBotGuild.members.cache.get(message.author.id);

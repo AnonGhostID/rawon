@@ -25,6 +25,25 @@ export class SongManager extends Collection<Snowflake, QueueSong> {
         return key;
     }
 
+    public addMultiple(tracks: Song[], requester: GuildMember): void {
+        for (const track of tracks) {
+            const key = SnowflakeUtil.generate().toLocaleString();
+            const entry: QueueSong = {
+                index: this.id++,
+                key,
+                requester,
+                song: track,
+            };
+            super.set(key, entry);
+            this.client.debugLog.logData(
+                "info",
+                "SONG_MANAGER",
+                `Batch add to ${this.guild.name}(${this.guild.id}). Key: ${key}`,
+            );
+        }
+        void this.saveQueueState();
+    }
+
     public restoreSong(key: Snowflake, index: number, song: Song, requester: GuildMember): void {
         const data: QueueSong = {
             index,

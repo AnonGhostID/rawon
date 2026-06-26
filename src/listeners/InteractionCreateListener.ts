@@ -12,7 +12,6 @@ import {
     ButtonStyle,
     Collection,
     ComponentType,
-    escapeMarkdown,
     GuildMember,
     type Interaction,
     Message,
@@ -28,8 +27,9 @@ import { type ServerQueue } from "../structures/ServerQueue.js";
 import { type LoopMode, type LyricsAPIResult, type QueueSong } from "../typings/index.js";
 import { chunk } from "../utils/functions/chunk.js";
 import { createEmbed } from "../utils/functions/createEmbed.js";
+import { formatBoldMarkdownLink } from "../utils/functions/formatMarkdown.js";
 import { i18n__, i18n__mf } from "../utils/functions/i18n.js";
-import { parseHTMLElements } from "../utils/functions/parseHTMLElements.js";
+import { isPlaybackMusicCommand } from "../utils/functions/musicCommandTarget.js";
 
 function hasSlashCommand(cmd: Command): boolean {
     return cmd.options.chatInputCommand !== undefined;
@@ -105,30 +105,8 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
                     .filter((x: Command) => hasSlashCommand(x))
                     .find((x: Command) => x.name === commandName);
 
-                const musicCommands = [
-                    "volume",
-                    "vol",
-                    "loop",
-                    "repeat",
-                    "shuffle",
-                    "autoplay",
-                    "ap",
-                    "filter",
-                    "skip",
-                    "skipto",
-                    "pause",
-                    "resume",
-                    "stop",
-                    "disconnect",
-                    "dc",
-                    "remove",
-                    "seek",
-                ];
                 isMusicCommand =
-                    cmd !== undefined &&
-                    (musicCommands.includes(commandName) ||
-                        (cmd.aliases.length > 0 &&
-                            musicCommands.some((name) => cmd.aliases.includes(name))));
+                    cmd !== undefined && isPlaybackMusicCommand(commandName, cmd.aliases);
             }
 
             const thisBotGuildForContext = interaction.guild
@@ -1212,7 +1190,7 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
                 queue.player.stop(true);
 
                 const opening = __mf("commands.music.remove.songsRemoved", { removed: 1 });
-                const pageContent = `${__("commands.music.remove.songSkip")}1.) **[${escapeMarkdown(parseHTMLElements(songTitle))}](${songUrl})**`;
+                const pageContent = `${__("commands.music.remove.songSkip")}1.) ${formatBoldMarkdownLink(songTitle, songUrl)}`;
                 const removeEmbed = createEmbed("info", pageContent)
                     .setAuthor({ name: opening })
                     .setFooter({

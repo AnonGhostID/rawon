@@ -7,79 +7,73 @@ export type FallbackDataManager = {
 };
 
 export function hasGetRequestChannel(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "getRequestChannel"> {
+    v: unknown,
+): v is Pick<ExtendedDataManager, "getRequestChannel"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "getRequestChannel" in data &&
-        typeof (data as ExtendedDataManager).getRequestChannel === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "getRequestChannel" in v &&
+        typeof (v as ExtendedDataManager).getRequestChannel === "function"
     );
 }
 
 export function hasSaveRequestChannel(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "saveRequestChannel"> {
+    v: unknown,
+): v is Pick<ExtendedDataManager, "saveRequestChannel"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "saveRequestChannel" in data &&
-        typeof (data as ExtendedDataManager).saveRequestChannel === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "saveRequestChannel" in v &&
+        typeof (v as ExtendedDataManager).saveRequestChannel === "function"
     );
 }
 
-export function hasGetPlayerState(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "getPlayerState"> {
+export function hasGetPlayerState(v: unknown): v is Pick<ExtendedDataManager, "getPlayerState"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "getPlayerState" in data &&
-        typeof (data as ExtendedDataManager).getPlayerState === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "getPlayerState" in v &&
+        typeof (v as ExtendedDataManager).getPlayerState === "function"
     );
 }
 
-export function hasSavePlayerState(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "savePlayerState"> {
+export function hasSavePlayerState(v: unknown): v is Pick<ExtendedDataManager, "savePlayerState"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "savePlayerState" in data &&
-        typeof (data as ExtendedDataManager).savePlayerState === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "savePlayerState" in v &&
+        typeof (v as ExtendedDataManager).savePlayerState === "function"
     );
 }
 
-export function hasSaveQueueState(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "saveQueueState"> {
+export function hasSaveQueueState(v: unknown): v is Pick<ExtendedDataManager, "saveQueueState"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "saveQueueState" in data &&
-        typeof (data as ExtendedDataManager).saveQueueState === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "saveQueueState" in v &&
+        typeof (v as ExtendedDataManager).saveQueueState === "function"
     );
 }
 
 export function hasDeleteQueueState(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "deleteQueueState"> {
+    v: unknown,
+): v is Pick<ExtendedDataManager, "deleteQueueState"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "deleteQueueState" in data &&
-        typeof (data as ExtendedDataManager).deleteQueueState === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "deleteQueueState" in v &&
+        typeof (v as ExtendedDataManager).deleteQueueState === "function"
     );
 }
 
 export function hasDeletePlayerState(
-    data: unknown,
-): data is Pick<ExtendedDataManager, "deletePlayerState"> {
+    v: unknown,
+): v is Pick<ExtendedDataManager, "deletePlayerState"> {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "deletePlayerState" in data &&
-        typeof (data as ExtendedDataManager).deletePlayerState === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "deletePlayerState" in v &&
+        typeof (v as ExtendedDataManager).deletePlayerState === "function"
     );
 }
 
@@ -94,24 +88,24 @@ export function isErrnoException(e: unknown): e is NodeJS.ErrnoException {
 }
 
 export function hasGetQueueState(
-    data: unknown,
-): data is { getQueueState(guildId: string, botId: string): unknown } {
+    v: unknown,
+): v is { getQueueState(guildId: string, botId: string): unknown } {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "getQueueState" in data &&
-        typeof (data as { getQueueState: unknown }).getQueueState === "function"
+        typeof v === "object" &&
+        v !== null &&
+        "getQueueState" in v &&
+        typeof (v as { getQueueState: unknown }).getQueueState === "function"
     );
 }
 
 export function hasGetGuildIdsWithQueueState(
-    data: unknown,
-): data is { getGuildIdsWithQueueState(botId: string): string[] } {
+    v: unknown,
+): v is { getGuildIdsWithQueueState(botId: string): string[] } {
     return (
-        typeof data === "object" &&
-        data !== null &&
-        "getGuildIdsWithQueueState" in data &&
-        typeof (data as { getGuildIdsWithQueueState: unknown }).getGuildIdsWithQueueState ===
+        typeof v === "object" &&
+        v !== null &&
+        "getGuildIdsWithQueueState" in v &&
+        typeof (v as { getGuildIdsWithQueueState: unknown }).getGuildIdsWithQueueState ===
             "function"
     );
 }

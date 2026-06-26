@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync, chmodSync, accessSync, constants } from "node:fs";
 import nodePath from "node:path";
 import process from "node:process";
 import got from "got";
@@ -10,6 +10,7 @@ const suffix = process.platform === "win32" ? ".exe" : (
 const filename = `yt-dlp${suffix}`;
 const scriptsPath = nodePath.resolve(process.cwd(), "cache", "scripts");
 const exePath = nodePath.resolve(scriptsPath, filename);
+const exeMode = process.platform === "win32" ? 0o666 : 0o755;
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const AUTO_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -19,7 +20,6 @@ let autoUpdateTimer = null;
 let isAutoUpdating = false;
 
 let cookiesManagerRef = null;
-let lastArgsLog = 0;
 
 export function setCookiesManager(manager) {
     cookiesManagerRef = manager;
@@ -27,6 +27,17 @@ export function setCookiesManager(manager) {
 
 export function getCookiesManager() {
     return cookiesManagerRef;
+}
+
+function ensureExecutable() {
+    if (process.platform === "win32") return;
+    try {
+        accessSync(exePath, constants.X_OK);
+    } catch {
+        try {
+            chmodSync(exePath, exeMode);
+        } catch {}
+    }
 }
 
 function args(url, options, cookiesPath) {
@@ -60,14 +71,6 @@ function args(url, options, cookiesPath) {
     const extractorArgs = cookiesManagerRef?.getExtractorArgs?.();
     if (extractorArgs) {
         optArgs.push("--extractor-args", extractorArgs);
-    }
-
-    const now = Date.now();
-    if (now - lastArgsLog > 300_000) {
-        lastArgsLog = now;
-        const shortUrl = url?.substring(0, 60);
-        const cookies = useCookies ? "yes" : "no";
-        console.info(`[yt-dlp] args: url=${shortUrl}, cookies=${cookies}, extractor-args=${extractorArgs ?? "none"}`);
     }
 
     return [url, ...optArgs];
@@ -133,7 +136,8 @@ export async function downloadExecutable() {
             await new Promise((resolve, reject) => {
                 got.get(asset.browser_download_url, { timeout: { request: 60_000 } }).buffer().then(x => {
                     mkdirSync(scriptsPath, { recursive: true });
-                    writeFileSync(exePath, x, { mode: 0o777 });
+                    writeFileSync(exePath, x, { mode: exeMode });
+                    ensureExecutable();
                     return 0;
                 }).then(resolve).catch(reject);
             });

@@ -1,12 +1,6 @@
 import { setTimeout } from "node:timers";
 import { joinVoiceChannel } from "@discordjs/voice";
-import {
-    escapeMarkdown,
-    type Message,
-    type StageChannel,
-    type TextChannel,
-    type VoiceChannel,
-} from "discord.js";
+import { type Message, type StageChannel, type TextChannel, type VoiceChannel } from "discord.js";
 import { type CommandContext } from "../../../structures/CommandContext.js";
 import { type Rawon } from "../../../structures/Rawon.js";
 import { ServerQueue } from "../../../structures/ServerQueue.js";
@@ -14,9 +8,14 @@ import { type PlaylistMetadata, type Song } from "../../../typings/index.js";
 import { chunk } from "../../functions/chunk.js";
 import { createEmbed } from "../../functions/createEmbed.js";
 import { createVoiceAdapter } from "../../functions/createVoiceAdapter.js";
-import { formatBoldCodeSpan } from "../../functions/formatCodeSpan.js";
+import { formatBoldMarkdownLink, formatMarkdownText } from "../../functions/formatMarkdown.js";
 import { i18n__, i18n__mf } from "../../functions/i18n.js";
-import { parseHTMLElements } from "../../functions/parseHTMLElements.js";
+import { formatPlaylistSummary } from "../../functions/playlistQueueNotice.js";
+import {
+    buildProgressMessage,
+    enqueueSongsWithUpdates,
+    shouldShowProgress,
+} from "../../functions/playlistQueueProgress.js";
 import { ButtonPagination } from "../../structures/ButtonPagination.js";
 import { play } from "./play.js";
 
@@ -48,18 +47,19 @@ export async function handleVideos(
     const __mf = i18n__mf(client, ctx.guild);
 
     async function sendConfirmation(): Promise<Message | undefined> {
-        for (const song of toQueue) {
-            ctx.guild?.queue?.songs.addSong(song, ctx.member as NonNullable<typeof ctx.member>);
-        }
+        const requester = ctx.member as NonNullable<typeof ctx.member>;
+        const songs = ctx.guild?.queue?.songs;
 
         if (toQueue.length === 1) {
+            songs?.addSong(toQueue[0], requester);
+
             const song = toQueue[0];
-            const songTitle = escapeMarkdown(parseHTMLElements(song.title));
+            const songTitle = song.title;
             const songUrl = song.url;
             const confirmEmbed = createEmbed(
                 "success",
                 `🎶 **|** ${__mf("requestChannel.addedToQueue", {
-                    song: `**[${songTitle}](${songUrl})**`,
+                    song: formatBoldMarkdownLink(songTitle, songUrl),
                 })}`,
             );
             if (song.thumbnail) {
@@ -76,19 +76,41 @@ export async function handleVideos(
             return msg;
         }
 
-        if (playlistMeta !== undefined) {
-            const playlistTitle = escapeMarkdown(parseHTMLElements(playlistMeta.title));
+        if (playlistMeta !== undefined && songs) {
+            const useProgress = shouldShowProgress(toQueue.length, true);
+            let progressMsg: Message | null = null;
+
+            if (useProgress && ctx.channel && "send" in ctx.channel) {
+                const notice = buildProgressMessage(client, ctx.guild, 0, toQueue.length);
+                progressMsg = await ctx.channel.send({ content: notice }).catch(() => null);
+            }
+
+            await enqueueSongsWithUpdates(songs, toQueue, requester, async (done, total) => {
+                if (progressMsg) {
+                    const text = buildProgressMessage(client, ctx.guild, done, total);
+                    await progressMsg.edit({ content: text }).catch(() => null);
+                }
+            });
+
+            const playlistTitle = formatMarkdownText(playlistMeta.title);
             const playlistText =
                 (playlistMeta.url?.length ?? 0) > 0
-                    ? `**[${playlistTitle}](${playlistMeta.url})**`
+                    ? `**${formatBoldMarkdownLink(playlistTitle, playlistMeta.url)}**`
                     : `**${playlistTitle}**`;
-            const confirmEmbed = createEmbed(
-                "success",
-                `🎶 **|** ${__mf("requestChannel.addedPlaylistToQueue", {
-                    count: formatBoldCodeSpan(toQueue.length.toString()),
-                    playlist: playlistText,
-                })}`,
+
+            const summaryText = formatPlaylistSummary(
+                client,
+                ctx.guild,
+                toQueue.length,
+                playlistText,
+                playlistMeta,
             );
+
+            if (progressMsg) {
+                await progressMsg.delete().catch(() => null);
+            }
+
+            const confirmEmbed = createEmbed("success", `🎶 **|** ${summaryText}`);
 
             if ((playlistMeta.thumbnail?.length ?? 0) > 0) {
                 confirmEmbed.setThumbnail(playlistMeta.thumbnail ?? null);
@@ -108,8 +130,11 @@ export async function handleVideos(
             if (inRequestChannel && msg) {
                 autoDeleteMessage(msg);
             }
-
             return msg;
+        }
+
+        for (const song of toQueue) {
+            songs?.addSong(song, requester);
         }
 
         const opening = __mf("utils.generalHandler.handleVideoInitial", {
@@ -117,8 +142,7 @@ export async function handleVideos(
         });
         const pages = chunk(toQueue, 10).map((vals, i) => {
             const texts = vals.map(
-                (song, index) =>
-                    `${i * 10 + (index + 1)}.) ${escapeMarkdown(parseHTMLElements(song.title))}`,
+                (song, index) => `${i * 10 + (index + 1)}.) ${formatMarkdownText(song.title)}`,
             );
 
             return texts.join("\n");

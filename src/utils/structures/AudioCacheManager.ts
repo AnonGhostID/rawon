@@ -25,6 +25,25 @@ const QUEUE_PROCESSING_DELAY_MS = 50;
 const MAX_PRE_CACHE_RETRIES = 2;
 const MAX_CONCURRENT_PRECACHE = 2;
 
+function isFatalYtDlpError(msg: string): boolean {
+    const lower = msg.toLowerCase();
+    return (
+        lower.startsWith("error:") ||
+        lower.includes("\nerror:") ||
+        lower.includes("unable to download video") ||
+        lower.includes("unable to rename file") ||
+        lower.includes("no such file or directory")
+    );
+}
+
+function isSoundcloudUrl(url: string): boolean {
+    try {
+        return /soundcloud|snd/gu.test(new URL(url).hostname);
+    } catch {
+        return false;
+    }
+}
+
 export class AudioCacheManager {
     public readonly cacheDir: string;
     private readonly cachedFiles = new Map<string, { path: string; lastAccess: number }>();
@@ -229,6 +248,10 @@ export class AudioCacheManager {
     }
 
     public async preCacheUrl(url: string, priority = false): Promise<boolean> {
+        if (isSoundcloudUrl(url)) {
+            return false;
+        }
+
         if (this.isCached(url)) {
             return true;
         }
@@ -445,6 +468,7 @@ export class AudioCacheManager {
 
                 let stderrData = "";
                 let hasBotDetectionError = false;
+                let hasFatalError = false;
                 let processKilled = false;
 
                 if (proc.stderr) {
@@ -463,6 +487,18 @@ export class AudioCacheManager {
                                 `[AudioCacheManager] Bot detection during pre-cache (attempt ${retryCount + 1}/${MAX_PRE_CACHE_RETRIES}). URL: ${url.slice(0, 50)}...`,
                             );
                             this.client.cookies.handleBotDetection();
+                        } else if (
+                            isFatalYtDlpError(stderrData) &&
+                            !hasFatalError &&
+                            !processKilled
+                        ) {
+                            hasFatalError = true;
+                            processKilled = true;
+                            proc.kill("SIGKILL");
+
+                            this.client.logger.warn(
+                                `[AudioCacheManager] Fatal yt-dlp error during pre-cache. URL: ${url.slice(0, 50)}...`,
+                            );
                         }
                     });
 
@@ -492,12 +528,16 @@ export class AudioCacheManager {
                             return;
                         }
 
-                        if (hasBotDetectionError) {
+                        if (hasBotDetectionError || hasFatalError) {
                             try {
                                 rmSync(cachePath, { force: true });
                             } catch {}
 
-                            if (retryCount < MAX_PRE_CACHE_RETRIES && !hasBotDetectionError) {
+                            if (
+                                retryCount < MAX_PRE_CACHE_RETRIES &&
+                                !hasBotDetectionError &&
+                                !hasFatalError
+                            ) {
                                 setTimeout(
                                     () => {
                                         void this.doPreCache(url, retryCount + 1);

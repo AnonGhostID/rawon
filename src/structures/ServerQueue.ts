@@ -55,6 +55,8 @@ export class ServerQueue {
     private _prefetchedAutoplaySong: { fromSongKey: Snowflake; song: Song } | null = null;
     private _autoplayPrefetchPromise: Promise<void> | null = null;
     private _autoplayPrefetchForKey: Snowflake | null = null;
+    private _autoplayRecentIds: string[] = [];
+    private static readonly AUTOPLAY_HISTORY_LIMIT = 30;
 
     public constructor(public readonly textChannel: TextChannel) {
         Object.defineProperties(this, {
@@ -70,6 +72,7 @@ export class ServerQueue {
             _prefetchedAutoplaySong: nonEnum,
             _autoplayPrefetchPromise: nonEnum,
             _autoplayPrefetchForKey: nonEnum,
+            _autoplayRecentIds: nonEnum,
         });
 
         this.songs = new SongManager(this.client, this.textChannel.guild);
@@ -1103,11 +1106,13 @@ export class ServerQueue {
         const queryData = checkQuery(currentSong.song.url);
         const sourceType = queryData.sourceType;
         const normalizedCurrentTitle = currentSong.song.title.trim().toLowerCase();
+        const recentIds = new Set(this._autoplayRecentIds);
 
         const isDifferentSong = (item: Song): boolean =>
             item.id !== currentSong.song.id &&
             item.url !== currentSong.song.url &&
-            item.title.trim().toLowerCase() !== normalizedCurrentTitle;
+            item.title.trim().toLowerCase() !== normalizedCurrentTitle &&
+            !recentIds.has(item.id);
 
         const tryResolve = async (
             query: string,
@@ -1121,8 +1126,12 @@ export class ServerQueue {
                     return undefined;
                 }
 
-                const randomIndex = Math.floor(Math.random() * candidates.length);
-                return candidates[randomIndex];
+                const picked = candidates[Math.floor(Math.random() * candidates.length)];
+                this._autoplayRecentIds.push(picked.id);
+                if (this._autoplayRecentIds.length > ServerQueue.AUTOPLAY_HISTORY_LIMIT) {
+                    this._autoplayRecentIds.shift();
+                }
+                return picked;
             } catch (error) {
                 this.client.logger.debug("[ServerQueue] Auto-play resolve failed", {
                     guild: this.textChannel.guild.id,

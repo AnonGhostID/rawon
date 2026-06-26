@@ -45,6 +45,8 @@ export type PlaylistMetadata = {
     url: string;
     thumbnail?: string;
     author?: string;
+    skippedCount?: number;
+    skippedReason?: "skipped" | "unavailable" | "unresolved";
 };
 
 export type SearchTrackResult = {
@@ -152,6 +154,7 @@ export type Song = {
     url: string;
     id: string;
     isLive?: boolean;
+    author?: string;
 };
 
 export type QueueSong = {
