@@ -649,7 +649,7 @@ export class ServerQueue {
         } else if (this.player.state.status === AudioPlayerStatus.Playing) {
             const currentSong = (this.player.state as AudioPlayerPlayingState).resource
                 .metadata as QueueSong;
-            this.preCacheNextSong(currentSong);
+            void this.enqueueAutoplayPlaylist(currentSong);
         }
         void this.saveState();
     }
@@ -977,6 +977,29 @@ export class ServerQueue {
         this._prefetchedAutoplaySongs = null;
         this._autoplayPrefetchForKey = null;
         this._autoplayPrefetchPromise = null;
+    }
+
+    private async enqueueAutoplayPlaylist(currentSong: QueueSong): Promise<void> {
+        const me = this.textChannel.guild.members.me;
+        if (!me) {
+            return;
+        }
+
+        const autoPlaySongs =
+            (await this.consumePrefetchedAutoplaySongs(currentSong)) ??
+            (await this.resolveAutoplayPlaylist(currentSong));
+
+        if (autoPlaySongs.length > 0) {
+            for (const autoPlaySong of autoPlaySongs) {
+                this.songs.addSong(autoPlaySong, me);
+            }
+            this.client.logger.info(
+                `[ServerQueue] Auto-play enqueued ${autoPlaySongs.length} songs for ${this.textChannel.guild.name}`,
+            );
+            void this.client.requestChannelManager.updatePlayerMessage(this.textChannel.guild);
+        }
+
+        this.preCacheNextSong(currentSong);
     }
 
     private peekNextKey(currentSong: QueueSong): Snowflake | undefined {
