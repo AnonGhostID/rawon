@@ -52,11 +52,12 @@ export class ServerQueue {
     private _suppressPlayerErrors = false;
     private _pendingCacheUrls: string[] = [];
     private _shuffleUpcomingKeys: Snowflake[] = [];
-    private _prefetchedAutoplaySong: { fromSongKey: Snowflake; song: Song } | null = null;
+    private _prefetchedAutoplaySongs: { fromSongKey: Snowflake; songs: Song[] } | null = null;
     private _autoplayPrefetchPromise: Promise<void> | null = null;
     private _autoplayPrefetchForKey: Snowflake | null = null;
     private _autoplayRecentIds: string[] = [];
     private static readonly AUTOPLAY_HISTORY_LIMIT = 30;
+    private static readonly AUTOPLAY_PLAYLIST_SIZE = 30;
 
     public constructor(public readonly textChannel: TextChannel) {
         Object.defineProperties(this, {
@@ -69,7 +70,7 @@ export class ServerQueue {
             _skipCooldownMs: nonEnum,
             _positionSaveInterval: nonEnum,
             _suppressPlayerErrors: nonEnum,
-            _prefetchedAutoplaySong: nonEnum,
+            _prefetchedAutoplaySongs: nonEnum,
             _autoplayPrefetchPromise: nonEnum,
             _autoplayPrefetchForKey: nonEnum,
             _autoplayRecentIds: nonEnum,
@@ -177,20 +178,27 @@ export class ServerQueue {
 
                     const me = this.textChannel.guild.members.me;
                     if (!nextS && this.autoPlay && me) {
-                        const autoPlaySong =
-                            (await this.consumePrefetchedAutoplaySong(song)) ??
-                            (await this.resolveAutoplaySong(song));
+                        const autoPlaySongs =
+                            (await this.consumePrefetchedAutoplaySongs(song)) ??
+                            (await this.resolveAutoplayPlaylist(song));
 
-                        if (autoPlaySong !== undefined) {
-                            nextS = this.songs.addSong(autoPlaySong, me);
+                        if (autoPlaySongs.length > 0) {
+                            let firstKey: string | undefined;
+                            for (const autoPlaySong of autoPlaySongs) {
+                                const key = this.songs.addSong(autoPlaySong, me);
+                                if (!firstKey) {
+                                    firstKey = key;
+                                }
+                            }
+                            nextS = firstKey;
                             this.client.logger.info(
-                                `[ServerQueue] Auto-play queued for ${this.textChannel.guild.name}: ${autoPlaySong.title}`,
+                                `[ServerQueue] Auto-play queued ${autoPlaySongs.length} songs for ${this.textChannel.guild.name}`,
                             );
                         }
                     }
 
-                    if (this._prefetchedAutoplaySong?.fromSongKey === song.key) {
-                        this._prefetchedAutoplaySong = null;
+                    if (this._prefetchedAutoplaySongs?.fromSongKey === song.key) {
+                        this._prefetchedAutoplaySongs = null;
                     }
 
                     void this.client.requestChannelManager.updatePlayerMessage(
@@ -966,7 +974,7 @@ export class ServerQueue {
     }
 
     private clearAutoplayPrefetchState(): void {
-        this._prefetchedAutoplaySong = null;
+        this._prefetchedAutoplaySongs = null;
         this._autoplayPrefetchForKey = null;
         this._autoplayPrefetchPromise = null;
     }
@@ -997,7 +1005,7 @@ export class ServerQueue {
     }
 
     private async preCacheAutoplaySong(currentSong: QueueSong): Promise<void> {
-        if (this._prefetchedAutoplaySong?.fromSongKey === currentSong.key) {
+        if (this._prefetchedAutoplaySongs?.fromSongKey === currentSong.key) {
             return;
         }
 
@@ -1009,23 +1017,22 @@ export class ServerQueue {
         const fromSongKey = currentSong.key;
 
         const task = (async () => {
-            const autoPlaySong = await this.resolveAutoplaySong(currentSong);
+            const autoPlaySongs = await this.resolveAutoplayPlaylist(currentSong);
             if (
-                autoPlaySong === undefined ||
+                autoPlaySongs.length === 0 ||
                 !this.autoPlay ||
                 this._autoplayPrefetchForKey !== fromSongKey
             ) {
                 return;
             }
 
-            this._prefetchedAutoplaySong = {
+            this._prefetchedAutoplaySongs = {
                 fromSongKey,
-                song: autoPlaySong,
+                songs: autoPlaySongs,
             };
 
-            if (!autoPlaySong.isLive) {
-                await this.client.audioCache.preCacheUrl(autoPlaySong.url, true);
-            }
+            const nonLive = autoPlaySongs.filter((s) => !s.isLive);
+            await Promise.all(nonLive.map((s) => this.client.audioCache.preCacheUrl(s.url, true)));
         })();
 
         this._autoplayPrefetchPromise = task
@@ -1046,7 +1053,9 @@ export class ServerQueue {
         await this._autoplayPrefetchPromise;
     }
 
-    private async consumePrefetchedAutoplaySong(currentSong: QueueSong): Promise<Song | undefined> {
+    private async consumePrefetchedAutoplaySongs(
+        currentSong: QueueSong,
+    ): Promise<Song[] | undefined> {
         if (this._autoplayPrefetchForKey === currentSong.key && this._autoplayPrefetchPromise) {
             await Promise.race([
                 this._autoplayPrefetchPromise,
@@ -1056,13 +1065,13 @@ export class ServerQueue {
             ]);
         }
 
-        if (this._prefetchedAutoplaySong?.fromSongKey !== currentSong.key) {
+        if (this._prefetchedAutoplaySongs?.fromSongKey !== currentSong.key) {
             return undefined;
         }
 
-        const prefetchedSong = this._prefetchedAutoplaySong.song;
-        this._prefetchedAutoplaySong = null;
-        return prefetchedSong;
+        const songs = this._prefetchedAutoplaySongs.songs;
+        this._prefetchedAutoplaySongs = null;
+        return songs;
     }
 
     private syncShuffleUpcomingKeys(currentKey?: Snowflake): void {
@@ -1102,11 +1111,12 @@ export class ServerQueue {
         return nextKey;
     }
 
-    private async resolveAutoplaySong(currentSong: QueueSong): Promise<Song | undefined> {
+    private async resolveAutoplayPlaylist(currentSong: QueueSong): Promise<Song[]> {
         const queryData = checkQuery(currentSong.song.url);
         const sourceType = queryData.sourceType;
         const normalizedCurrentTitle = currentSong.song.title.trim().toLowerCase();
         const recentIds = new Set(this._autoplayRecentIds);
+        const limit = ServerQueue.AUTOPLAY_PLAYLIST_SIZE;
 
         const isDifferentSong = (item: Song): boolean =>
             item.id !== currentSong.song.id &&
@@ -1114,43 +1124,48 @@ export class ServerQueue {
             item.title.trim().toLowerCase() !== normalizedCurrentTitle &&
             !recentIds.has(item.id);
 
-        const tryResolve = async (
+        const tryResolveMany = async (
             query: string,
             source?: "soundcloud" | "youtube",
-        ): Promise<Song | undefined> => {
+        ): Promise<Song[]> => {
             try {
                 const result = await searchTrack(this.client, query, source);
                 const candidates = result.items.filter((item) => isDifferentSong(item));
-
                 if (candidates.length === 0) {
-                    return undefined;
+                    return [];
                 }
-
-                const picked = candidates[Math.floor(Math.random() * candidates.length)];
-                this._autoplayRecentIds.push(picked.id);
-                if (this._autoplayRecentIds.length > ServerQueue.AUTOPLAY_HISTORY_LIMIT) {
-                    this._autoplayRecentIds.shift();
+                const picked: Song[] = [];
+                for (const candidate of candidates) {
+                    if (picked.length >= limit) {
+                        break;
+                    }
+                    if (this._autoplayRecentIds.includes(candidate.id)) {
+                        continue;
+                    }
+                    picked.push(candidate);
+                    this._autoplayRecentIds.push(candidate.id);
+                    if (this._autoplayRecentIds.length > ServerQueue.AUTOPLAY_HISTORY_LIMIT) {
+                        this._autoplayRecentIds.shift();
+                    }
                 }
                 return picked;
             } catch (error) {
-                this.client.logger.debug("[ServerQueue] Auto-play resolve failed", {
+                this.client.logger.debug("[ServerQueue] Auto-play playlist resolve failed", {
                     guild: this.textChannel.guild.id,
                     source: source ?? "auto",
                     query,
                     error: error instanceof Error ? (error.stack ?? error.message) : String(error),
                 });
             }
-
-            return undefined;
+            return [];
         };
 
         if (sourceType === "soundcloud") {
-            const soundCloudMatch = await tryResolve(currentSong.song.title, "soundcloud");
-            if (soundCloudMatch !== undefined) {
+            const soundCloudMatch = await tryResolveMany(currentSong.song.title, "soundcloud");
+            if (soundCloudMatch.length > 0) {
                 return soundCloudMatch;
             }
-
-            return tryResolve(currentSong.song.title);
+            return tryResolveMany(currentSong.song.title);
         }
 
         if (sourceType === "youtube") {
@@ -1164,16 +1179,15 @@ export class ServerQueue {
                     : [titleQuery];
 
             for (const query of queries) {
-                const nextSong = await tryResolve(query, "youtube");
-                if (nextSong !== undefined) {
-                    return nextSong;
+                const songs = await tryResolveMany(query, "youtube");
+                if (songs.length > 0) {
+                    return songs;
                 }
             }
-
-            return undefined;
+            return [];
         }
 
-        return tryResolve(currentSong.song.title);
+        return tryResolveMany(currentSong.song.title);
     }
 
     public get skipInProgress(): boolean {
