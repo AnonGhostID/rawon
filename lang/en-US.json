@@ -295,8 +295,14 @@
             },
             "autoplay": {
                 "actualState": "Auto-play is currently {state}",
+                "blockedBy247": "Auto-play cannot be disabled while 24/7 mode is active.",
                 "description": "Toggle auto-play mode",
                 "newState": "Auto-play is now {state}"
+            },
+            "247": {
+                "description": "Toggle 24/7 mode (bot stays in voice channel)",
+                "actualState": "24/7 mode is currently {state}",
+                "newState": "24/7 mode has been set to {state}"
             },
             "seek": {
                 "cantSeekLive": "Can't seek in live streams.",

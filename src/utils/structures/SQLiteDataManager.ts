@@ -122,6 +122,15 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             `);
         }
 
+        const hasStayInChannelColumn = playerStateInfo.some(
+            (col) => col.name === "stay_in_channel",
+        );
+        if (!hasStayInChannelColumn) {
+            await this.db.exec(`
+                ALTER TABLE player_states ADD COLUMN stay_in_channel INTEGER DEFAULT 0;
+            `);
+        }
+
         await this.db.exec(`
             CREATE TABLE IF NOT EXISTS bot_settings (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -167,6 +176,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                     loop_mode: string;
                     shuffle: number;
                     autoplay: number;
+                    stay_in_channel: number;
                     volume: number;
                     filters_json: string | null;
                 }>("SELECT * FROM player_states");
@@ -235,6 +245,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                         loopMode: (ps.loop_mode ?? "OFF") as LoopMode,
                         shuffle: ps.shuffle === 1,
                         autoplay: ps.autoplay === 1,
+                        stayInChannel: ps.stay_in_channel === 1,
                         volume: ps.volume ?? this.botSettings.defaultVolume,
                         filters,
                     };
@@ -405,12 +416,13 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
 
             await this.db.run(
                 `
-                INSERT INTO player_states (guild_id, bot_id, loop_mode, shuffle, autoplay, volume, filters_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO player_states (guild_id, bot_id, loop_mode, shuffle, autoplay, stay_in_channel, volume, filters_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, bot_id) DO UPDATE SET
                     loop_mode = excluded.loop_mode,
                     shuffle = excluded.shuffle,
                     autoplay = excluded.autoplay,
+                    stay_in_channel = excluded.stay_in_channel,
                     volume = excluded.volume,
                     filters_json = excluded.filters_json
                 `,
@@ -419,6 +431,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 playerState.loopMode,
                 playerState.shuffle ? 1 : 0,
                 playerState.autoplay ? 1 : 0,
+                playerState.stayInChannel ? 1 : 0,
                 playerState.volume,
                 JSON.stringify(playerState.filters),
             );

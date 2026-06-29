@@ -293,8 +293,14 @@
                 "description": "Đặt chế độ cho tính năng phát ngẫu nhiên",
                 "newState": "Chế độ phát ngẫu nhiên được đặt thành {state}"
             },
+            "247": {
+                "description": "Bật hoặc tắt chế độ 24/7 (bot ở lại kênh thoại)",
+                "actualState": "Chế độ 24/7 hiện tại là {state}",
+                "newState": "Chế độ 24/7 được đặt thành {state}"
+            },
             "autoplay": {
                 "actualState": "Chế độ phát tự động hiện tại là {state}",
+                "blockedBy247": "Không thể tắt phát tự động khi chế độ 24/7 đang hoạt động.",
                 "description": "Bật hoặc tắt phát tự động",
                 "newState": "Chế độ phát tự động được đặt thành {state}"
             },

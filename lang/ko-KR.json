@@ -293,8 +293,14 @@
                 "description": "셔플 기능 모드 설정",
                 "newState": "셔플 모드가 {state}로 설정되었어요"
             },
+            "247": {
+                "description": "24/7 모드 설정 (봇이 음성 채널에 계속 머물러요)",
+                "actualState": "현재 24/7 모드는 {state}이에요",
+                "newState": "24/7 모드가 {state}로 설정되었어요"
+            },
             "autoplay": {
                 "actualState": "현재 자동재생 모드는 {state}이에요",
+                "blockedBy247": "24/7 모드가 활성화된 동안에는 자동재생을 비활성화할 수 없어요.",
                 "description": "자동재생 기능 모드 설정",
                 "newState": "자동재생 모드가 {state}로 설정되었어요"
             },

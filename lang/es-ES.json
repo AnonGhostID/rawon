@@ -293,8 +293,14 @@
                 "description": "Aleatoriza la cola",
                 "newState": "El modo aleatorio se estableció ahora a {state}"
             },
+            "247": {
+                "description": "Alternar modo 24/7 (el bot permanece en el canal de voz)",
+                "actualState": "El modo 24/7 está actualmente {state}",
+                "newState": "El modo 24/7 ahora es {state}"
+            },
             "autoplay": {
                 "actualState": "La reproducción automática está actualmente {state}",
+                "blockedBy247": "No se puede desactivar la reproducción automática mientras el modo 24/7 está activo.",
                 "description": "Alternar modo de reproducción automática",
                 "newState": "La reproducción automática ahora es {state}"
             },

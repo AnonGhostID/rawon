@@ -161,7 +161,7 @@ export class VoiceStateUpdateListener extends Listener<typeof Events.VoiceStateU
                     `[VoiceState] ${client.user?.tag} moved to EMPTY channel ${newId}, triggering pause and timeout`,
                 );
                 queue.skipVoters = [];
-                if (queue.timeout === null) {
+                if (queue.timeout === null && !queue.stayInChannel) {
                     const emptyMembers = newChannelMembers ?? queueVc.members.filter(() => false);
                     this.timeout(emptyMembers, queue, newState, thisBotGuild);
                 }
@@ -307,7 +307,8 @@ export class VoiceStateUpdateListener extends Listener<typeof Events.VoiceStateU
             newId !== queueVc.id &&
             member?.user.bot !== true &&
             queue.timeout === null &&
-            !queue.idle
+            !queue.idle &&
+            !queue.stayInChannel
         ) {
             queue.skipVoters = queue.skipVoters.filter((x) => x !== member?.id);
             this.timeout(queueVcMembers, queue, newState, thisBotGuild);

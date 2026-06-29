@@ -293,8 +293,14 @@
                 "description": "シャッフルモードを設定",
                 "newState": "シャッフルモードは{state}にセットされました。"
             },
+            "247": {
+                "description": "24/7モードをトグル（ボットがボイスチャンネルに残ります）",
+                "actualState": "24/7モードは現在{state}",
+                "newState": "24/7モードが{state}に設定されました"
+            },
             "autoplay": {
                 "actualState": "オートプレイは現在{state}",
+                "blockedBy247": "24/7モードが有効な間はオートプレイを無効にできません。",
                 "description": "オートプレイモードをトグル",
                 "newState": "オートプレイは{state}に設定されました"
             },

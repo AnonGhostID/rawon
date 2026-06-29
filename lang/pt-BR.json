@@ -293,8 +293,14 @@
                 "description": "Configura o modo aleatório",
                 "newState": "Modo aleatório agora está {state}"
             },
+            "247": {
+                "description": "Ativa ou desativa o modo 24/7 (o bot permanece no canal de voz)",
+                "actualState": "O modo 24/7 está {state}",
+                "newState": "O modo 24/7 agora está {state}"
+            },
             "autoplay": {
                 "actualState": "Autoreproção está {state}",
+                "blockedBy247": "Não é possível desativar a autoreproção enquanto o modo 24/7 estiver ativo.",
                 "description": "Ativa ou desativa a autoreproção",
                 "newState": "Autoreproção agora está {state}"
             },

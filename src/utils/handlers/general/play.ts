@@ -87,22 +87,27 @@ export async function play(
 
         void queue.client.requestChannelManager.updatePlayerMessage(guild);
 
-        setTimeout(async () => {
-            if (!guild.queue?.songs.first()) {
-                await queue.destroy();
-                if (!isRequestChannel) {
-                    const msg = await queue.textChannel.send({
-                        flags: MessageFlags.SuppressNotifications,
-                        embeds: [
-                            createEmbed("info", `👋 **|** ${__("utils.generalHandler.leftVC")}`),
-                        ],
-                    });
-                    setTimeout(() => {
-                        void msg.delete();
-                    }, 3_500);
+        if (!queue.stayInChannel) {
+            setTimeout(async () => {
+                if (!guild.queue?.songs.first()) {
+                    await queue.destroy();
+                    if (!isRequestChannel) {
+                        const msg = await queue.textChannel.send({
+                            flags: MessageFlags.SuppressNotifications,
+                            embeds: [
+                                createEmbed(
+                                    "info",
+                                    `👋 **|** ${__("utils.generalHandler.leftVC")}`,
+                                ),
+                            ],
+                        });
+                        setTimeout(() => {
+                            void msg.delete();
+                        }, 3_500);
+                    }
                 }
-            }
-        }, 60_000);
+            }, 60_000);
+        }
         queue.client.debugLog.logData(
             "info",
             "PLAY_HANDLER",

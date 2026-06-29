@@ -293,8 +293,14 @@
                 "description": "Karıştırma özelliği için modu ayarlama",
                 "newState": "Karıştırma modu şimdi {state} olarak ayarlandı"
             },
+            "247": {
+                "description": "7/24 modunu açma veya kapatma (bot ses kanalında kalır)",
+                "actualState": "Geçerli 7/24 modu {state}",
+                "newState": "7/24 modu şimdi {state} olarak ayarlandı"
+            },
             "autoplay": {
                 "actualState": "Geçerli otomatik oynatma modu {state}",
+                "blockedBy247": "7/24 modu etkinken otomatik oynatma devre dışı bırakılamaz.",
                 "description": "Otomatik oynatma özelliği için modu ayarlama",
                 "newState": "Otomatik oynatma modu şimdi {state} olarak ayarlandı"
             },

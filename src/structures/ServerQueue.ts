@@ -8,6 +8,7 @@ import {
     type VoiceConnection,
 } from "@discordjs/voice";
 import { MessageFlags, type Snowflake, type TextChannel } from "discord.js";
+import { useRemoteDb } from "../config/index.js";
 import { type LoopMode, type QueueSong, type SavedQueueSong, type Song } from "../typings/index.js";
 import { createEmbed } from "../utils/functions/createEmbed.js";
 import { type filterArgs } from "../utils/functions/ffmpegArgs.js";
@@ -38,6 +39,7 @@ export class ServerQueue {
     public loopMode: LoopMode = "OFF";
     public shuffle = false;
     public autoPlay = false;
+    public stayInChannel = false;
     public filters: Partial<Record<keyof typeof filterArgs, boolean>> = {};
     public seekOffset = 0;
 
@@ -389,8 +391,9 @@ export class ServerQueue {
                 }
             } else {
                 savedState = this.client.data.getPlayerState(guildId, botId) ?? null;
+                const dbLabel = useRemoteDb ? "Cloud DB" : "SQLite (local)";
                 this.client.logger.debug(
-                    `Loading player state from SQLite for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}`,
+                    `Loading player state from ${dbLabel} for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}`,
                 );
             }
 
@@ -398,6 +401,7 @@ export class ServerQueue {
                 this.loopMode = (savedState.loopMode as typeof this.loopMode) ?? "OFF";
                 this.shuffle = savedState.shuffle ?? false;
                 this.autoPlay = savedState.autoplay ?? false;
+                this.stayInChannel = savedState.stayInChannel ?? false;
                 this._volume = savedState.volume ?? this.resolvedDefaultVolume;
                 this.filters = (savedState.filters ?? {}) as Partial<
                     Record<keyof typeof filterArgs, boolean>
@@ -420,6 +424,7 @@ export class ServerQueue {
             this.loopMode = savedState.loopMode ?? "OFF";
             this.shuffle = savedState.shuffle ?? false;
             this.autoPlay = savedState.autoplay ?? false;
+            this.stayInChannel = savedState.stayInChannel ?? false;
             this._volume = savedState.volume ?? this.resolvedDefaultVolume;
             this.filters = (savedState.filters ?? {}) as Partial<
                 Record<keyof typeof filterArgs, boolean>
@@ -440,26 +445,28 @@ export class ServerQueue {
             loopMode: this.loopMode,
             shuffle: this.shuffle,
             autoplay: this.autoPlay,
+            stayInChannel: this.stayInChannel,
             volume: this._volume,
             filters: this.filters as Record<string, boolean>,
         };
 
         const botId = this.client.user?.id ?? "unknown";
         const guildId = this.textChannel.guild.id;
+        const dbLabel = useRemoteDb ? "Cloud DB" : "SQLite (local)";
 
         if (hasSavePlayerState(this.client.data)) {
             this.client.logger.debug(
-                `Saving player state to SQLite for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}: ` +
-                    `loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, volume=${this._volume}, filters=${JSON.stringify(playerState.filters)}`,
+                `Saving player state to ${dbLabel} for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}: ` +
+                    `loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, stayInChannel=${this.stayInChannel}, volume=${this._volume}, filters=${JSON.stringify(playerState.filters)}`,
             );
 
             try {
                 await this.client.data.savePlayerState(guildId, botId, playerState);
                 this.client.logger.info(
-                    `✅ Saved player state to SQLite for guild ${this.textChannel.guild.name}`,
+                    `✅ Saved player state to ${dbLabel} for guild ${this.textChannel.guild.name}`,
                 );
             } catch (error) {
-                this.client.logger.error(`❌ Failed to save player state to SQLite:`, error);
+                this.client.logger.error(`❌ Failed to save player state to ${dbLabel}:`, error);
             }
             return;
         }
@@ -480,10 +487,11 @@ export class ServerQueue {
         this.loopMode = sourceQueue.loopMode;
         this.shuffle = sourceQueue.shuffle;
         this.autoPlay = sourceQueue.autoPlay;
+        this.stayInChannel = sourceQueue.stayInChannel;
         this._volume = sourceQueue.volume;
         this.filters = { ...sourceQueue.filters };
         this.client.logger.info(
-            `[MultiBot] Copied player state from primary bot: loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, volume=${this._volume}`,
+            `[MultiBot] Copied player state from primary bot: loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, stayInChannel=${this.stayInChannel}, volume=${this._volume}`,
         );
     }
 
@@ -656,6 +664,11 @@ export class ServerQueue {
 
     public setAutoplay(value: boolean): void {
         this.setAutoPlay(value);
+    }
+
+    public setStayInChannel(value: boolean): void {
+        this.stayInChannel = value;
+        void this.saveState();
     }
 
     public stop(): void {

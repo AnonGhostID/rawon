@@ -1,3 +1,4 @@
+import { clearTimeout } from "node:timers";
 import { ApplyOptions } from "@sapphire/decorators";
 import { type Command } from "@sapphire/framework";
 import { type CommandContext, ContextCommand } from "@stegripe/command-context";
@@ -5,17 +6,17 @@ import { PermissionFlagsBits, type SlashCommandBuilder } from "discord.js";
 import i18n from "../../config/index.js";
 import { type CommandContext as LocalCommandContext } from "../../structures/CommandContext.js";
 import { type Rawon } from "../../structures/Rawon.js";
-import { haveQueue, inVC, sameVC, useRequestChannel } from "../../utils/decorators/MusicUtil.js";
+import { haveQueue, inVC, sameVC } from "../../utils/decorators/MusicUtil.js";
 import { createEmbed } from "../../utils/functions/createEmbed.js";
 import { formatBoldPrefixedCommand } from "../../utils/functions/formatCodeSpan.js";
 import { getEffectivePrefix } from "../../utils/functions/getEffectivePrefix.js";
 import { i18n__, i18n__mf } from "../../utils/functions/i18n.js";
 
 @ApplyOptions<Command.Options>({
-    name: "autoplay",
-    aliases: ["ap"],
-    description: i18n.__("commands.music.autoplay.description"),
-    detailedDescription: { usage: "{prefix}autoplay [enable | disable]" },
+    name: "247",
+    aliases: ["24/7", "twentyfourseven"],
+    description: i18n.__("commands.music.247.description"),
+    detailedDescription: { usage: "{prefix}247 [on | enable | off | disable]" },
     requiredClientPermissions: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -26,26 +27,27 @@ import { i18n__, i18n__mf } from "../../utils/functions/i18n.js";
         opts: Parameters<NonNullable<Command.Options["chatInputCommand"]>>[1],
     ): SlashCommandBuilder {
         return builder
-            .setName(opts.name ?? "autoplay")
-            .setDescription(opts.description ?? i18n.__("commands.music.autoplay.description"))
+            .setName(opts.name ?? "247")
+            .setDescription(opts.description ?? i18n.__("commands.music.247.description"))
             .addStringOption((opt) =>
                 opt
                     .setName("state")
-                    .setDescription(i18n.__("commands.music.autoplay.description"))
+                    .setDescription(i18n.__("commands.music.247.description"))
                     .setRequired(false)
                     .addChoices(
+                        { name: "ON", value: "on" },
                         { name: "ENABLE", value: "enable" },
+                        { name: "OFF", value: "off" },
                         { name: "DISABLE", value: "disable" },
                     ),
             ) as SlashCommandBuilder;
     },
 })
-export class AutoPlayCommand extends ContextCommand {
+export class TwentyFourSevenCommand extends ContextCommand {
     private getClient(ctx: CommandContext): Rawon {
         return ctx.client as Rawon;
     }
 
-    @useRequestChannel
     @inVC
     @haveQueue
     @sameVC
@@ -65,8 +67,8 @@ export class AutoPlayCommand extends ContextCommand {
                 embeds: [
                     createEmbed(
                         "info",
-                        `♾️ **|** ${__mf("commands.music.autoplay.actualState", {
-                            state: `**\`${ctx.guild?.queue?.autoPlay === true ? __("reusable.enabled") : __("reusable.disabled")}\`**`,
+                        `🕐 **|** ${__mf("commands.music.247.actualState", {
+                            state: `**\`${ctx.guild?.queue?.stayInChannel === true ? __("reusable.enabled") : __("reusable.disabled")}\`**`,
                         })}`,
                     ),
                 ],
@@ -74,7 +76,7 @@ export class AutoPlayCommand extends ContextCommand {
             return;
         }
 
-        if (newState !== "enable" && newState !== "disable") {
+        if (!["on", "enable", "off", "disable"].includes(newState)) {
             const prefix = getEffectivePrefix(client, ctx.guild?.id ?? null);
             void ctx.reply({
                 embeds: [
@@ -91,31 +93,45 @@ export class AutoPlayCommand extends ContextCommand {
             return;
         }
 
-        if (newState === "disable" && ctx.guild?.queue?.stayInChannel === true) {
-            void ctx.reply({
-                embeds: [
-                    createEmbed(
-                        "error",
-                        `♾️ **|** ${__("commands.music.autoplay.blockedBy247")}`,
-                        true,
-                    ),
-                ],
-            });
+        const queue = ctx.guild?.queue;
+        if (!queue) {
             return;
         }
 
-        ctx.guild?.queue?.setAutoPlay(newState === "enable");
-        const isAutoPlay = ctx.guild?.queue?.autoPlay;
+        if (newState === "on" || newState === "enable") {
+            queue.setStayInChannel(true);
+            queue.setAutoPlay(true);
 
-        void ctx.reply({
-            embeds: [
-                createEmbed(
-                    "success",
-                    `♾️ **|** ${__mf("commands.music.autoplay.newState", {
-                        state: `**\`${isAutoPlay === true ? __("reusable.enabled") : __("reusable.disabled")}\`**`,
-                    })}`,
-                ),
-            ],
-        });
+            // Cancel any pending disconnect timeout
+            if (queue.timeout !== null) {
+                clearTimeout(queue.timeout);
+                queue.timeout = null;
+                queue.player.unpause();
+            }
+
+            void ctx.reply({
+                embeds: [
+                    createEmbed(
+                        "success",
+                        `🕐 **|** ${__mf("commands.music.247.newState", {
+                            state: `**\`${__("reusable.enabled")}\`**`,
+                        })}`,
+                    ),
+                ],
+            });
+        } else {
+            queue.setStayInChannel(false);
+
+            void ctx.reply({
+                embeds: [
+                    createEmbed(
+                        "success",
+                        `🕐 **|** ${__mf("commands.music.247.newState", {
+                            state: `**\`${__("reusable.disabled")}\`**`,
+                        })}`,
+                    ),
+                ],
+            });
+        }
     }
 }

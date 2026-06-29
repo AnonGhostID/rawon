@@ -293,8 +293,14 @@
                 "description": "設置隨機播放模式的功能",
                 "newState": "隨機播放模式已設置為{state}"
             },
+            "247": {
+                "description": "切換 24/7 模式（機器人持續留在語音頻道）",
+                "actualState": "24/7 模式目前為 {state}",
+                "newState": "24/7 模式現已設定為 {state}"
+            },
             "autoplay": {
                 "actualState": "自動播放目前為 {state}",
+                "blockedBy247": "24/7 模式開啟時無法關閉自動播放。",
                 "description": "切換自動播放模式",
                 "newState": "自動播放現已設定為 {state}"
             },

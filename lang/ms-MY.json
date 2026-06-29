@@ -293,8 +293,14 @@
                 "description": "Tetapkan mod acak",
                 "newState": "Mod acak ditetapkan ke {state}"
             },
+            "247": {
+                "description": "Hidupkan atau matikan mod 24/7 (bot kekal dalam saluran suara)",
+                "actualState": "Mod 24/7 kini {state}",
+                "newState": "Mod 24/7 ditetapkan ke {state}"
+            },
             "autoplay": {
                 "actualState": "Mod main otomatis kini {state}",
+                "blockedBy247": "Main otomatis tidak boleh dimatikan semasa mod 24/7 aktif.",
                 "description": "Tetapkan mod main otomatis",
                 "newState": "Mod main otomatis ditetapkan ke {state}"
             },

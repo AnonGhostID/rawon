@@ -293,8 +293,14 @@
                 "description": "Définir le mode de la fonction de lecture aléatoire",
                 "newState": "Le mode aléatoire est maintenant réglé sur {state}"
             },
+            "247": {
+                "description": "Activer/désactiver le mode 24/7 (le bot reste dans le salon vocal)",
+                "actualState": "Le mode 24/7 est actuellement {state}",
+                "newState": "Le mode 24/7 est maintenant {state}"
+            },
             "autoplay": {
                 "actualState": "La lecture automatique est actuellement {state}",
+                "blockedBy247": "Impossible de désactiver la lecture automatique lorsque le mode 24/7 est actif.",
                 "description": "Activer/désactiver le mode de lecture automatique",
                 "newState": "La lecture automatique est maintenant {state}"
             },

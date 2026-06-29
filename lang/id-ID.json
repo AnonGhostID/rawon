@@ -293,8 +293,14 @@
                 "description": "Acak antrian",
                 "newState": "Mode acak udah diset ke {state}"
             },
+            "247": {
+                "description": "Nyalakan atau matikan mode 24/7 (bot tetap di channel suara)",
+                "actualState": "Mode 24/7 sekarang {state}",
+                "newState": "Mode 24/7 udah diset ke {state}"
+            },
             "autoplay": {
                 "actualState": "Mode putar otomatis sekarang {state}",
+                "blockedBy247": "Putar otomatis gak bisa dimatiin selama mode 24/7 aktif.",
                 "description": "Nyalakan atau matikan mode putar otomatis",
                 "newState": "Mode putar otomatis udah diset ke {state}"
             },
