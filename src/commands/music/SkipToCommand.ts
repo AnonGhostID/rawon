@@ -188,7 +188,7 @@ export class SkipToCommand extends ContextCommand {
             client,
             guild: ctx.guild as NonNullable<typeof ctx.guild>,
             member,
-            requesterIds: [np, song],
+            trackOwners: [np, song],
         });
 
         if (!canControl) {

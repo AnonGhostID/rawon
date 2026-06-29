@@ -68,7 +68,7 @@ export class SkipCommand extends ContextCommand {
             client,
             guild: ctx.guild as GuildMember["guild"],
             member: ctx.member as GuildMember | null,
-            requesterIds: [song],
+            trackOwners: [song],
         });
 
         if (!canControl) {

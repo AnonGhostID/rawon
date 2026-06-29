@@ -7,15 +7,23 @@ import {
     createAudioPlayer,
     type VoiceConnection,
 } from "@discordjs/voice";
-import { ChannelType, Events, MessageFlags, type Snowflake, type StageChannel, type TextChannel, type VoiceChannel } from "discord.js";
-import { useRemoteDb } from "../config/index.js";
+import {
+    ChannelType,
+    Events,
+    MessageFlags,
+    type Snowflake,
+    type StageChannel,
+    type TextChannel,
+    type VoiceChannel,
+} from "discord.js";
 import { type LoopMode, type QueueSong, type SavedQueueSong, type Song } from "../typings/index.js";
 import { createEmbed } from "../utils/functions/createEmbed.js";
 import { type filterArgs } from "../utils/functions/ffmpegArgs.js";
 import { formatBoldPrefixedCommand } from "../utils/functions/formatCodeSpan.js";
+import { formatBoldMarkdownLink } from "../utils/functions/formatMarkdown.js";
 import { getEffectivePrefix } from "../utils/functions/getEffectivePrefix.js";
 import { i18n__mf } from "../utils/functions/i18n.js";
-import { checkQuery, play, searchTrack } from "../utils/handlers/GeneralUtil.js";
+import { checkQuery, play } from "../utils/handlers/GeneralUtil.js";
 import { SongManager } from "../utils/structures/SongManager.js";
 import { BOT_SETTINGS_DEFAULTS } from "../utils/structures/SQLiteDataManager.js";
 import {
@@ -33,6 +41,17 @@ import {
 import { type Rawon } from "./Rawon.js";
 
 const nonEnum = { enumerable: false };
+
+export type RequesterDeafTimeoutReason = "deaf" | "left";
+
+type RequesterDeafTimeoutState = {
+    requesterId: Snowflake;
+    songKey: Snowflake;
+    reason: RequesterDeafTimeoutReason;
+    timeout: NodeJS.Timeout;
+};
+
+export type ServerQueueTextChannel = TextChannel | VoiceChannel | StageChannel;
 
 type VoiceChannelStatusState = {
     channelId: Snowflake;
@@ -52,6 +71,8 @@ type ChannelInfoPayload = {
     }[];
 };
 
+const AUTOPLAY_HISTORY_LIMIT = 30;
+
 export class ServerQueue {
     public readonly player: AudioPlayer = createAudioPlayer();
     public connection: VoiceConnection | null = null;
@@ -61,7 +82,6 @@ export class ServerQueue {
     public loopMode: LoopMode = "OFF";
     public shuffle = false;
     public autoPlay = false;
-    public stayInChannel = false;
     public filters: Partial<Record<keyof typeof filterArgs, boolean>> = {};
     public seekOffset = 0;
 
@@ -76,16 +96,15 @@ export class ServerQueue {
     private _suppressPlayerErrors = false;
     private _pendingCacheUrls: string[] = [];
     private _shuffleUpcomingKeys: Snowflake[] = [];
-    private _prefetchedAutoplaySongs: { fromSongKey: Snowflake; songs: Song[] } | null = null;
+    private _prefetchedAutoplaySong: { fromSongKey: Snowflake; song: Song } | null = null;
     private _autoplayPrefetchPromise: Promise<void> | null = null;
     private _autoplayPrefetchForKey: Snowflake | null = null;
-    private _autoplayRecentIds: string[] = [];
+    private _autoplayHistory: Song[] = [];
+    private _requesterDeafTimeout: RequesterDeafTimeoutState | null = null;
     private _voiceChannelStatusState: VoiceChannelStatusState | null = null;
     private _voiceChannelStatusRestorePromise: Promise<void> | null = null;
-    private static readonly AUTOPLAY_HISTORY_LIMIT = 30;
-    private static readonly AUTOPLAY_PLAYLIST_SIZE = 30;
 
-    public constructor(public readonly textChannel: TextChannel) {
+    public constructor(public readonly textChannel: ServerQueueTextChannel) {
         Object.defineProperties(this, {
             _skipVoters: nonEnum,
             _lastMusicMsg: nonEnum,
@@ -96,10 +115,11 @@ export class ServerQueue {
             _skipCooldownMs: nonEnum,
             _positionSaveInterval: nonEnum,
             _suppressPlayerErrors: nonEnum,
-            _prefetchedAutoplaySongs: nonEnum,
+            _prefetchedAutoplaySong: nonEnum,
             _autoplayPrefetchPromise: nonEnum,
             _autoplayPrefetchForKey: nonEnum,
-            _autoplayRecentIds: nonEnum,
+            _autoplayHistory: nonEnum,
+            _requesterDeafTimeout: nonEnum,
             _voiceChannelStatusState: nonEnum,
             _voiceChannelStatusRestorePromise: nonEnum,
         });
@@ -115,6 +135,7 @@ export class ServerQueue {
                     newState.status === AudioPlayerStatus.Playing &&
                     oldState.status !== AudioPlayerStatus.Paused
                 ) {
+                    this.clearRequesterDeafTimeout();
                     this.endSkip();
                     newState.resource.volume?.setVolumeLogarithmic(this.volume / 100);
 
@@ -208,27 +229,21 @@ export class ServerQueue {
 
                     const me = this.textChannel.guild.members.me;
                     if (!nextS && this.autoPlay && me) {
-                        const autoPlaySongs =
-                            (await this.consumePrefetchedAutoplaySongs(song)) ??
-                            (await this.resolveAutoplayPlaylist(song));
+                        const autoPlaySong =
+                            (await this.consumePrefetchedAutoplaySong(song)) ??
+                            (await this.resolveAutoplaySong(song));
 
-                        if (autoPlaySongs.length > 0) {
-                            let firstKey: string | undefined;
-                            for (const autoPlaySong of autoPlaySongs) {
-                                const key = this.songs.addSong(autoPlaySong, me);
-                                if (!firstKey) {
-                                    firstKey = key;
-                                }
-                            }
-                            nextS = firstKey;
+                        if (autoPlaySong !== undefined) {
+                            nextS = this.songs.addSong(autoPlaySong, me);
+                            this.recordAutoplayHistory(autoPlaySong);
                             this.client.logger.info(
-                                `[ServerQueue] Auto-play queued ${autoPlaySongs.length} songs for ${this.textChannel.guild.name}`,
+                                `[ServerQueue] Auto-play queued for ${this.textChannel.guild.name}: ${autoPlaySong.title}`,
                             );
                         }
                     }
 
-                    if (this._prefetchedAutoplaySongs?.fromSongKey === song.key) {
-                        this._prefetchedAutoplaySongs = null;
+                    if (this._prefetchedAutoplaySong?.fromSongKey === song.key) {
+                        this._prefetchedAutoplaySong = null;
                     }
 
                     void this.client.requestChannelManager.updatePlayerMessage(
@@ -253,7 +268,10 @@ export class ServerQueue {
                                     createEmbed(
                                         "info",
                                         `⏹️ **|** ${__mf("utils.generalHandler.stopPlaying", {
-                                            song: `**[${song.song.title}](${song.song.url})**`,
+                                            song: formatBoldMarkdownLink(
+                                                song.song.title,
+                                                song.song.url,
+                                            ),
                                         })}`,
                                     ).setThumbnail(
                                         typeof song.song.thumbnail === "string" &&
@@ -386,7 +404,6 @@ export class ServerQueue {
                 loopMode?: string;
                 shuffle?: boolean;
                 autoplay?: boolean;
-                stayInChannel?: boolean;
                 volume?: number;
                 filters?: Record<string, boolean>;
             } | null = null;
@@ -395,7 +412,7 @@ export class ServerQueue {
                 const botInstance = this.client.multiBotManager.getBotByClient(this.client);
                 const isPrimary = botInstance?.isPrimary ?? true;
 
-                this.client.logger.info(
+                this.client.logger.debug(
                     `[MultiBot] ${this.client.user?.tag} attempting to load player state for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}, isPrimary=${isPrimary}`,
                 );
 
@@ -412,7 +429,7 @@ export class ServerQueue {
                     if (primaryBotId) {
                         savedState = this.client.data.getPlayerState(guildId, primaryBotId) ?? null;
                         if (savedState) {
-                            this.client.logger.info(
+                            this.client.logger.debug(
                                 `[MultiBot] ${this.client.user?.tag} (non-primary) no own state found, inheriting from PRIMARY bot (${primaryBot?.user?.tag})`,
                             );
                         }
@@ -420,9 +437,8 @@ export class ServerQueue {
                 }
             } else {
                 savedState = this.client.data.getPlayerState(guildId, botId) ?? null;
-                const dbLabel = useRemoteDb ? "Cloud DB" : "SQLite (local)";
                 this.client.logger.debug(
-                    `Loading player state from ${dbLabel} for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}`,
+                    `Loading player state from SQLite for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}`,
                 );
             }
 
@@ -430,17 +446,16 @@ export class ServerQueue {
                 this.loopMode = (savedState.loopMode as typeof this.loopMode) ?? "OFF";
                 this.shuffle = savedState.shuffle ?? false;
                 this.autoPlay = savedState.autoplay ?? false;
-                this.stayInChannel = savedState.stayInChannel ?? false;
                 this._volume = savedState.volume ?? this.resolvedDefaultVolume;
                 this.filters = (savedState.filters ?? {}) as Partial<
                     Record<keyof typeof filterArgs, boolean>
                 >;
-                this.client.logger.info(
+                this.client.logger.debug(
                     `✅ Loaded saved player state for guild ${this.textChannel.guild.name}: ` +
                         `loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, volume=${this._volume}, filters=${JSON.stringify(this.filters)}`,
                 );
             } else {
-                this.client.logger.warn(
+                this.client.logger.debug(
                     `⚠️ No saved player state found for guild ${this.textChannel.guild.name}, using defaults`,
                 );
             }
@@ -453,17 +468,16 @@ export class ServerQueue {
             this.loopMode = savedState.loopMode ?? "OFF";
             this.shuffle = savedState.shuffle ?? false;
             this.autoPlay = savedState.autoplay ?? false;
-            this.stayInChannel = savedState.stayInChannel ?? false;
             this._volume = savedState.volume ?? this.resolvedDefaultVolume;
             this.filters = (savedState.filters ?? {}) as Partial<
                 Record<keyof typeof filterArgs, boolean>
             >;
-            this.client.logger.info(
+            this.client.logger.debug(
                 `✅ Loaded saved player state for guild ${this.textChannel.guild.name}: ` +
                     `loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, volume=${this._volume}, filters=${JSON.stringify(this.filters)}`,
             );
         } else {
-            this.client.logger.warn(
+            this.client.logger.debug(
                 `⚠️ No saved player state found for guild ${this.textChannel.guild.name}, using defaults`,
             );
         }
@@ -474,28 +488,26 @@ export class ServerQueue {
             loopMode: this.loopMode,
             shuffle: this.shuffle,
             autoplay: this.autoPlay,
-            stayInChannel: this.stayInChannel,
             volume: this._volume,
             filters: this.filters as Record<string, boolean>,
         };
 
         const botId = this.client.user?.id ?? "unknown";
         const guildId = this.textChannel.guild.id;
-        const dbLabel = useRemoteDb ? "Cloud DB" : "SQLite (local)";
 
         if (hasSavePlayerState(this.client.data)) {
             this.client.logger.debug(
-                `Saving player state to ${dbLabel} for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}: ` +
-                    `loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, stayInChannel=${this.stayInChannel}, volume=${this._volume}, filters=${JSON.stringify(playerState.filters)}`,
+                `Saving player state to SQLite for guild ${guildId} (${this.textChannel.guild.name}), botId=${botId}: ` +
+                    `loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, volume=${this._volume}, filters=${JSON.stringify(playerState.filters)}`,
             );
 
             try {
                 await this.client.data.savePlayerState(guildId, botId, playerState);
                 this.client.logger.info(
-                    `✅ Saved player state to ${dbLabel} for guild ${this.textChannel.guild.name}`,
+                    `✅ Saved player state to SQLite for guild ${this.textChannel.guild.name}`,
                 );
             } catch (error) {
-                this.client.logger.error(`❌ Failed to save player state to ${dbLabel}:`, error);
+                this.client.logger.error(`❌ Failed to save player state to SQLite:`, error);
             }
             return;
         }
@@ -516,11 +528,10 @@ export class ServerQueue {
         this.loopMode = sourceQueue.loopMode;
         this.shuffle = sourceQueue.shuffle;
         this.autoPlay = sourceQueue.autoPlay;
-        this.stayInChannel = sourceQueue.stayInChannel;
         this._volume = sourceQueue.volume;
         this.filters = { ...sourceQueue.filters };
         this.client.logger.info(
-            `[MultiBot] Copied player state from primary bot: loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, stayInChannel=${this.stayInChannel}, volume=${this._volume}`,
+            `[MultiBot] Copied player state from primary bot: loop=${this.loopMode}, shuffle=${this.shuffle}, autoPlay=${this.autoPlay}, volume=${this._volume}`,
         );
     }
 
@@ -537,12 +548,21 @@ export class ServerQueue {
             }
         }
 
-        const savedSongs: SavedQueueSong[] = this.songs.sortByIndex().map((queueSong) => ({
-            requesterId: queueSong.requester.id,
-            index: queueSong.index,
-            song: queueSong.song,
-            key: queueSong.key,
-        }));
+        const botId = this.client.user?.id ?? "unknown";
+        const savedSongs: SavedQueueSong[] = this.songs
+            .sortByIndex()
+            .filter((queueSong) => queueSong.requester.id !== botId)
+            .map((queueSong) => ({
+                requesterId: queueSong.requester.id,
+                index: queueSong.index,
+                song: queueSong.song,
+                key: queueSong.key,
+            }));
+
+        if (currentSongKey !== null && !savedSongs.some((song) => song.key === currentSongKey)) {
+            currentSongKey = null;
+            currentPosition = 0;
+        }
 
         const voiceChannelId = this.connection?.joinConfig.channelId;
         if (
@@ -562,7 +582,6 @@ export class ServerQueue {
         };
 
         if (hasSaveQueueState(this.client.data)) {
-            const botId = this.client.user?.id ?? "unknown";
             await this.client.data.saveQueueState(this.textChannel.guild.id, botId, queueState);
         } else {
             const fallback = this.client.data as FallbackDataManager;
@@ -686,7 +705,7 @@ export class ServerQueue {
         } else if (this.player.state.status === AudioPlayerStatus.Playing) {
             const currentSong = (this.player.state as AudioPlayerPlayingState).resource
                 .metadata as QueueSong;
-            void this.enqueueAutoplayPlaylist(currentSong);
+            this.preCacheNextSong(currentSong);
         }
         void this.saveState();
     }
@@ -695,13 +714,9 @@ export class ServerQueue {
         this.setAutoPlay(value);
     }
 
-    public setStayInChannel(value: boolean): void {
-        this.stayInChannel = value;
-        void this.saveState();
-    }
-
     public stop(): void {
         this.stopPositionSaveInterval();
+        this.clearRequesterDeafTimeout();
         void this.restoreVoiceChannelStatus();
         try {
             const songUrls: string[] = this.songs.map((s) => s.song.url);
@@ -738,6 +753,7 @@ export class ServerQueue {
         }
         this._suppressPlayerErrors = true;
         this.stop();
+        await this.restoreVoiceChannelStatus();
 
         try {
             this.connection?.disconnect();
@@ -852,6 +868,22 @@ export class ServerQueue {
         this._skipVoters = value;
     }
 
+    public get requesterDeafTimeout(): RequesterDeafTimeoutState | null {
+        return this._requesterDeafTimeout;
+    }
+
+    public setRequesterDeafTimeout(value: RequesterDeafTimeoutState): void {
+        this.clearRequesterDeafTimeout();
+        this._requesterDeafTimeout = value;
+    }
+
+    public clearRequesterDeafTimeout(): void {
+        if (this._requesterDeafTimeout !== null) {
+            clearTimeout(this._requesterDeafTimeout.timeout);
+            this._requesterDeafTimeout = null;
+        }
+    }
+
     public get lastMusicMsg(): Snowflake | null {
         return this._lastMusicMsg;
     }
@@ -910,18 +942,11 @@ export class ServerQueue {
         return this.player.state.status === AudioPlayerStatus.Playing;
     }
 
-    public get currentSongKey(): string | null {
-        if (this.player.state.status !== AudioPlayerStatus.Playing) {
-            return null;
-        }
-        const metadata = (this.player.state as AudioPlayerPlayingState).resource.metadata as
-            | QueueSong
-            | undefined;
-        return metadata?.key ?? null;
-    }
-
     public set playing(value: boolean) {
         if (value) {
+            if (this.requesterDeafTimeout) {
+                return;
+            }
             this.player.unpause();
         } else {
             this.player.pause();
@@ -963,7 +988,7 @@ export class ServerQueue {
                         createEmbed(
                             "info",
                             `▶️ **|** ${__mf("utils.generalHandler.startPlaying", {
-                                song: `**[${newSong.title}](${newSong.url})**`,
+                                song: formatBoldMarkdownLink(newSong.title, newSong.url),
                             })}`,
                         ).setThumbnail(thumb),
                     ],
@@ -971,327 +996,6 @@ export class ServerQueue {
                 .then((ms) => (this.lastMusicMsg = ms.id))
                 .catch((error: unknown) => this.client.logger.error("PLAY_ERR:", error));
         })();
-    }
-
-    private preCacheNextSong(currentSong: QueueSong): void {
-        if (this.loopMode === "SONG") {
-            return;
-        }
-
-        const songsToCache: string[] = [];
-        const PRE_CACHE_AHEAD = 3;
-
-        if (this.shuffle) {
-            this.syncShuffleUpcomingKeys(currentSong.key);
-
-            for (const key of this._shuffleUpcomingKeys.slice(0, PRE_CACHE_AHEAD)) {
-                const nextSong = this.songs.get(key);
-                if (!nextSong || nextSong.song.isLive) {
-                    continue;
-                }
-                songsToCache.push(nextSong.song.url);
-            }
-        } else {
-            const sortedSongs = this.songs.sortByIndex();
-            const nextSongsArray = Array.from(
-                sortedSongs.filter((s) => s.index > currentSong.index && !s.song.isLive).values(),
-            ).slice(0, PRE_CACHE_AHEAD);
-
-            for (const song of nextSongsArray) {
-                songsToCache.push(song.song.url);
-            }
-
-            if (songsToCache.length < PRE_CACHE_AHEAD && this.loopMode === "QUEUE") {
-                const remaining = PRE_CACHE_AHEAD - songsToCache.length;
-                const fromStartArray = Array.from(
-                    sortedSongs
-                        .filter((s) => !s.song.isLive && !songsToCache.includes(s.song.url))
-                        .values(),
-                ).slice(0, remaining);
-
-                for (const song of fromStartArray) {
-                    songsToCache.push(song.song.url);
-                }
-            }
-        }
-
-        if (songsToCache.length > 0) {
-            void this.client.audioCache.preCacheMultiple(songsToCache);
-        }
-
-        if (!this.autoPlay || this.peekNextKey(currentSong) !== undefined) {
-            return;
-        }
-
-        void this.preCacheAutoplaySong(currentSong);
-    }
-
-    public clearAutoplayPrefetchState(): void {
-        this._prefetchedAutoplaySongs = null;
-        this._autoplayPrefetchForKey = null;
-        this._autoplayPrefetchPromise = null;
-    }
-
-    private async enqueueAutoplayPlaylist(currentSong: QueueSong): Promise<void> {
-        const me = this.textChannel.guild.members.me;
-        if (!me) {
-            return;
-        }
-
-        const autoPlaySongs =
-            (await this.consumePrefetchedAutoplaySongs(currentSong)) ??
-            (await this.resolveAutoplayPlaylist(currentSong));
-
-        if (autoPlaySongs.length > 0) {
-            for (const autoPlaySong of autoPlaySongs) {
-                this.songs.addSong(autoPlaySong, me);
-            }
-            this.client.logger.info(
-                `[ServerQueue] Auto-play enqueued ${autoPlaySongs.length} songs for ${this.textChannel.guild.name}`,
-            );
-            void this.client.requestChannelManager.updatePlayerMessage(this.textChannel.guild);
-        }
-
-        this.preCacheNextSong(currentSong);
-    }
-
-    private peekNextKey(currentSong: QueueSong): Snowflake | undefined {
-        if (this.shuffle && this.loopMode !== "SONG") {
-            this.syncShuffleUpcomingKeys(currentSong.key);
-            return this._shuffleUpcomingKeys[0];
-        }
-
-        if (this.loopMode === "SONG") {
-            if (this.songs.has(currentSong.key)) {
-                return currentSong.key;
-            }
-
-            const sortedSongs = this.songs.sortByIndex();
-            return (
-                sortedSongs.filter((x) => x.index > currentSong.index).first()?.key ??
-                sortedSongs.first()?.key
-            );
-        }
-
-        const sortedSongs = this.songs.sortByIndex();
-        return (
-            sortedSongs.filter((x) => x.index > currentSong.index).first()?.key ??
-            (this.loopMode === "QUEUE" ? sortedSongs.first()?.key : undefined)
-        );
-    }
-
-    private async preCacheAutoplaySong(currentSong: QueueSong): Promise<void> {
-        if (this._prefetchedAutoplaySongs?.fromSongKey === currentSong.key) {
-            return;
-        }
-
-        if (this._autoplayPrefetchForKey === currentSong.key && this._autoplayPrefetchPromise) {
-            return;
-        }
-
-        this._autoplayPrefetchForKey = currentSong.key;
-        const fromSongKey = currentSong.key;
-
-        const task = (async () => {
-            const autoPlaySongs = await this.resolveAutoplayPlaylist(currentSong);
-            if (
-                autoPlaySongs.length === 0 ||
-                !this.autoPlay ||
-                this._autoplayPrefetchForKey !== fromSongKey
-            ) {
-                return;
-            }
-
-            this._prefetchedAutoplaySongs = {
-                fromSongKey,
-                songs: autoPlaySongs,
-            };
-
-            const nonLive = autoPlaySongs.filter((s) => !s.isLive);
-            await Promise.all(nonLive.map((s) => this.client.audioCache.preCacheUrl(s.url, true)));
-        })();
-
-        this._autoplayPrefetchPromise = task
-            .catch((error: unknown) => {
-                this.client.logger.debug("[ServerQueue] Auto-play pre-cache failed", {
-                    guild: this.textChannel.guild.id,
-                    songKey: currentSong.key,
-                    error: error instanceof Error ? (error.stack ?? error.message) : String(error),
-                });
-            })
-            .finally(() => {
-                if (this._autoplayPrefetchForKey === fromSongKey) {
-                    this._autoplayPrefetchForKey = null;
-                }
-                this._autoplayPrefetchPromise = null;
-            });
-
-        await this._autoplayPrefetchPromise;
-    }
-
-    private async consumePrefetchedAutoplaySongs(
-        currentSong: QueueSong,
-    ): Promise<Song[] | undefined> {
-        if (this._autoplayPrefetchForKey === currentSong.key && this._autoplayPrefetchPromise) {
-            await Promise.race([
-                this._autoplayPrefetchPromise,
-                new Promise<void>((resolve) => {
-                    setTimeout(resolve, 1500);
-                }),
-            ]);
-        }
-
-        if (this._prefetchedAutoplaySongs?.fromSongKey !== currentSong.key) {
-            return undefined;
-        }
-
-        const songs = this._prefetchedAutoplaySongs.songs;
-        this._prefetchedAutoplaySongs = null;
-        return songs;
-    }
-
-    private syncShuffleUpcomingKeys(currentKey?: Snowflake): void {
-        const candidateKeys = this.songs
-            .filter((song) => song.key !== currentKey && !song.song.isLive)
-            .map((song) => song.key);
-
-        if (candidateKeys.length === 0) {
-            this._shuffleUpcomingKeys = [];
-            return;
-        }
-
-        const candidateSet = new Set(candidateKeys);
-        const preserved = this._shuffleUpcomingKeys.filter((key) => candidateSet.has(key));
-        const preservedSet = new Set(preserved);
-        const missing = candidateKeys.filter((key) => !preservedSet.has(key));
-
-        for (let i = missing.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [missing[i], missing[j]] = [missing[j], missing[i]];
-        }
-
-        this._shuffleUpcomingKeys = [...preserved, ...missing];
-    }
-
-    private getNextShuffleKey(currentKey: Snowflake): Snowflake | undefined {
-        this.syncShuffleUpcomingKeys(currentKey);
-
-        let nextKey = this._shuffleUpcomingKeys.shift();
-
-        if (!nextKey && this.loopMode === "QUEUE") {
-            this._shuffleUpcomingKeys = [];
-            this.syncShuffleUpcomingKeys(currentKey);
-            nextKey = this._shuffleUpcomingKeys.shift();
-        }
-
-        return nextKey;
-    }
-
-    private async resolveAutoplayPlaylist(currentSong: QueueSong): Promise<Song[]> {
-        const queryData = checkQuery(currentSong.song.url);
-        const sourceType = queryData.sourceType;
-        const normalizedCurrentTitle = currentSong.song.title.trim().toLowerCase();
-        const recentIds = new Set(this._autoplayRecentIds);
-        const limit = ServerQueue.AUTOPLAY_PLAYLIST_SIZE;
-
-        const isDifferentSong = (item: Song): boolean =>
-            item.id !== currentSong.song.id &&
-            item.url !== currentSong.song.url &&
-            item.title.trim().toLowerCase() !== normalizedCurrentTitle &&
-            !recentIds.has(item.id);
-
-        const tryResolveMany = async (
-            query: string,
-            source?: "soundcloud" | "youtube",
-        ): Promise<Song[]> => {
-            try {
-                const result = await searchTrack(this.client, query, source);
-                const candidates = result.items.filter((item) => isDifferentSong(item));
-                if (candidates.length === 0) {
-                    return [];
-                }
-                const picked: Song[] = [];
-                for (const candidate of candidates) {
-                    if (picked.length >= limit) {
-                        break;
-                    }
-                    if (this._autoplayRecentIds.includes(candidate.id)) {
-                        continue;
-                    }
-                    picked.push(candidate);
-                    this._autoplayRecentIds.push(candidate.id);
-                    if (this._autoplayRecentIds.length > ServerQueue.AUTOPLAY_HISTORY_LIMIT) {
-                        this._autoplayRecentIds.shift();
-                    }
-                }
-                return picked;
-            } catch (error) {
-                this.client.logger.debug("[ServerQueue] Auto-play playlist resolve failed", {
-                    guild: this.textChannel.guild.id,
-                    source: source ?? "auto",
-                    query,
-                    error: error instanceof Error ? (error.stack ?? error.message) : String(error),
-                });
-            }
-            return [];
-        };
-
-        if (sourceType === "soundcloud") {
-            const soundCloudMatch = await tryResolveMany(currentSong.song.title, "soundcloud");
-            if (soundCloudMatch.length > 0) {
-                return soundCloudMatch;
-            }
-            return tryResolveMany(currentSong.song.title);
-        }
-
-        if (sourceType === "youtube") {
-            const titleQuery = `${currentSong.song.title} topic`;
-            const queries =
-                currentSong.song.id.length > 0
-                    ? [
-                          `https://www.youtube.com/watch?v=${currentSong.song.id}&list=RD${currentSong.song.id}`,
-                          titleQuery,
-                      ]
-                    : [titleQuery];
-
-            for (const query of queries) {
-                const songs = await tryResolveMany(query, "youtube");
-                if (songs.length > 0) {
-                    return songs;
-                }
-            }
-            return [];
-        }
-
-        return tryResolveMany(currentSong.song.title);
-    }
-
-    public get skipInProgress(): boolean {
-        return this._skipInProgress;
-    }
-
-    public canSkip(): boolean {
-        if (this._skipInProgress) {
-            return false;
-        }
-        const now = Date.now();
-        if (now - this._lastSkipTime < this._skipCooldownMs) {
-            return false;
-        }
-        return true;
-    }
-
-    public startSkip(): boolean {
-        if (!this.canSkip()) {
-            return false;
-        }
-        this._skipInProgress = true;
-        this._lastSkipTime = Date.now();
-        return true;
-    }
-
-    public endSkip(): void {
-        this._skipInProgress = false;
     }
 
     private getConnectedVoiceChannel(): VoiceChannel | null {
@@ -1318,11 +1022,11 @@ export class ServerQueue {
 
         if (hasGetVoiceChannelStatusState(this.client.data)) {
             const state = this.client.data.getVoiceChannelStatusState(guildId, botId);
-            return (state as VoiceChannelStatusState) ?? null;
+            return state ?? null;
         }
 
         const fallback = this.client.data as FallbackDataManager;
-        return (fallback.data?.[guildId]?.voiceChannelStatusState as VoiceChannelStatusState) ?? null;
+        return fallback.data?.[guildId]?.voiceChannelStatusState ?? null;
     }
 
     private getSavedVoiceChannelStatusStatesByChannel(
@@ -1331,25 +1035,30 @@ export class ServerQueue {
         const guildId = this.textChannel.guild.id;
 
         if (hasGetVoiceChannelStatusStatesByChannel(this.client.data)) {
-            return this.client.data.getVoiceChannelStatusStatesByChannel(
-                guildId,
-                channelId,
-            ) as OwnedVoiceChannelStatusState[];
+            return this.client.data.getVoiceChannelStatusStatesByChannel(guildId, channelId);
         }
 
-        return [];
+        const savedState = this.getSavedVoiceChannelStatusState();
+        if (savedState?.channelId !== channelId) {
+            return [];
+        }
+
+        return [{ ...savedState, botId: this.getBotId() }];
     }
 
     private findVoiceChannelStatusOwner(
         channelId: Snowflake,
         currentStatus: string | null | undefined,
     ): OwnedVoiceChannelStatusState | null {
-        if (!currentStatus) {
+        if (typeof currentStatus !== "string") {
             return null;
         }
 
-        const states = this.getSavedVoiceChannelStatusStatesByChannel(channelId);
-        return states.find((s) => s.appliedStatus === currentStatus) ?? null;
+        return (
+            this.getSavedVoiceChannelStatusStatesByChannel(channelId).find(
+                (state) => state.appliedStatus === currentStatus,
+            ) ?? null
+        );
     }
 
     private async saveVoiceChannelStatusState(state: VoiceChannelStatusState): Promise<void> {
@@ -1553,5 +1262,253 @@ export class ServerQueue {
 
         this._voiceChannelStatusRestorePromise = restorePromise;
         return restorePromise;
+    }
+
+    private preCacheNextSong(currentSong: QueueSong): void {
+        if (this.loopMode === "SONG") {
+            return;
+        }
+
+        const songsToCache: string[] = [];
+        const PRE_CACHE_AHEAD = 3;
+
+        if (this.shuffle) {
+            this.syncShuffleUpcomingKeys(currentSong.key);
+
+            for (const key of this._shuffleUpcomingKeys.slice(0, PRE_CACHE_AHEAD)) {
+                const nextSong = this.songs.get(key);
+                if (!nextSong || nextSong.song.isLive) {
+                    continue;
+                }
+                songsToCache.push(nextSong.song.url);
+            }
+        } else {
+            const sortedSongs = this.songs.sortByIndex();
+            const nextSongsArray = Array.from(
+                sortedSongs.filter((s) => s.index > currentSong.index && !s.song.isLive).values(),
+            ).slice(0, PRE_CACHE_AHEAD);
+
+            for (const song of nextSongsArray) {
+                songsToCache.push(song.song.url);
+            }
+
+            if (songsToCache.length < PRE_CACHE_AHEAD && this.loopMode === "QUEUE") {
+                const remaining = PRE_CACHE_AHEAD - songsToCache.length;
+                const fromStartArray = Array.from(
+                    sortedSongs
+                        .filter((s) => !s.song.isLive && !songsToCache.includes(s.song.url))
+                        .values(),
+                ).slice(0, remaining);
+
+                for (const song of fromStartArray) {
+                    songsToCache.push(song.song.url);
+                }
+            }
+        }
+
+        if (songsToCache.length > 0) {
+            void this.client.audioCache.preCacheMultiple(songsToCache);
+        }
+
+        if (!this.autoPlay || this.peekNextKey(currentSong) !== undefined) {
+            return;
+        }
+
+        void this.preCacheAutoplaySong(currentSong);
+    }
+
+    private clearAutoplayPrefetchState(): void {
+        this._prefetchedAutoplaySong = null;
+        this._autoplayPrefetchForKey = null;
+        this._autoplayPrefetchPromise = null;
+        this._autoplayHistory = [];
+    }
+
+    private recordAutoplayHistory(song: Song): void {
+        this._autoplayHistory.unshift(song);
+        if (this._autoplayHistory.length > AUTOPLAY_HISTORY_LIMIT) {
+            this._autoplayHistory.length = AUTOPLAY_HISTORY_LIMIT;
+        }
+    }
+
+    private peekNextKey(currentSong: QueueSong): Snowflake | undefined {
+        if (this.shuffle && this.loopMode !== "SONG") {
+            this.syncShuffleUpcomingKeys(currentSong.key);
+            return this._shuffleUpcomingKeys[0];
+        }
+
+        if (this.loopMode === "SONG") {
+            if (this.songs.has(currentSong.key)) {
+                return currentSong.key;
+            }
+
+            const sortedSongs = this.songs.sortByIndex();
+            return (
+                sortedSongs.filter((x) => x.index > currentSong.index).first()?.key ??
+                sortedSongs.first()?.key
+            );
+        }
+
+        const sortedSongs = this.songs.sortByIndex();
+        return (
+            sortedSongs.filter((x) => x.index > currentSong.index).first()?.key ??
+            (this.loopMode === "QUEUE" ? sortedSongs.first()?.key : undefined)
+        );
+    }
+
+    private async preCacheAutoplaySong(currentSong: QueueSong): Promise<void> {
+        if (this._prefetchedAutoplaySong?.fromSongKey === currentSong.key) {
+            return;
+        }
+
+        if (this._autoplayPrefetchForKey === currentSong.key && this._autoplayPrefetchPromise) {
+            return;
+        }
+
+        this._autoplayPrefetchForKey = currentSong.key;
+        const fromSongKey = currentSong.key;
+
+        const task = (async () => {
+            const autoPlaySong = await this.resolveAutoplaySong(currentSong);
+            if (
+                autoPlaySong === undefined ||
+                !this.autoPlay ||
+                this._autoplayPrefetchForKey !== fromSongKey
+            ) {
+                return;
+            }
+
+            this._prefetchedAutoplaySong = {
+                fromSongKey,
+                song: autoPlaySong,
+            };
+
+            if (!autoPlaySong.isLive) {
+                await this.client.audioCache.preCacheUrl(autoPlaySong.url, true);
+            }
+        })();
+
+        this._autoplayPrefetchPromise = task
+            .catch((error: unknown) => {
+                this.client.logger.debug("[ServerQueue] Auto-play pre-cache failed", {
+                    guild: this.textChannel.guild.id,
+                    songKey: currentSong.key,
+                    error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+                });
+            })
+            .finally(() => {
+                if (this._autoplayPrefetchForKey === fromSongKey) {
+                    this._autoplayPrefetchForKey = null;
+                }
+                this._autoplayPrefetchPromise = null;
+            });
+
+        await this._autoplayPrefetchPromise;
+    }
+
+    private async consumePrefetchedAutoplaySong(currentSong: QueueSong): Promise<Song | undefined> {
+        if (this._autoplayPrefetchForKey === currentSong.key && this._autoplayPrefetchPromise) {
+            await Promise.race([
+                this._autoplayPrefetchPromise,
+                new Promise<void>((resolve) => {
+                    setTimeout(resolve, 1500);
+                }),
+            ]);
+        }
+
+        if (this._prefetchedAutoplaySong?.fromSongKey !== currentSong.key) {
+            return undefined;
+        }
+
+        const prefetchedSong = this._prefetchedAutoplaySong.song;
+        this._prefetchedAutoplaySong = null;
+        return prefetchedSong;
+    }
+
+    private syncShuffleUpcomingKeys(currentKey?: Snowflake): void {
+        const candidateKeys = this.songs
+            .filter((song) => song.key !== currentKey && !song.song.isLive)
+            .map((song) => song.key);
+
+        if (candidateKeys.length === 0) {
+            this._shuffleUpcomingKeys = [];
+            return;
+        }
+
+        const candidateSet = new Set(candidateKeys);
+        const preserved = this._shuffleUpcomingKeys.filter((key) => candidateSet.has(key));
+        const preservedSet = new Set(preserved);
+        const missing = candidateKeys.filter((key) => !preservedSet.has(key));
+
+        for (let i = missing.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [missing[i], missing[j]] = [missing[j], missing[i]];
+        }
+
+        this._shuffleUpcomingKeys = [...preserved, ...missing];
+    }
+
+    public getNextShuffleKey(currentKey: Snowflake): Snowflake | undefined {
+        this.syncShuffleUpcomingKeys(currentKey);
+
+        let nextKey = this._shuffleUpcomingKeys.shift();
+
+        if (!nextKey && this.loopMode === "QUEUE") {
+            this._shuffleUpcomingKeys = [];
+            this.syncShuffleUpcomingKeys(currentKey);
+            nextKey = this._shuffleUpcomingKeys.shift();
+        }
+
+        return nextKey;
+    }
+
+    private async resolveAutoplaySong(currentSong: QueueSong): Promise<Song | undefined> {
+        const queryData = checkQuery(currentSong.song.url);
+
+        try {
+            const song = await this.client.license.autoplayMusic(
+                currentSong.song,
+                this._autoplayHistory,
+                queryData.sourceType,
+            );
+            return song;
+        } catch (error) {
+            this.client.logger.debug("[ServerQueue] Auto-play resolve failed", {
+                guild: this.textChannel.guild.id,
+                source: queryData.sourceType ?? "auto",
+                title: currentSong.song.title,
+                error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+            });
+        }
+
+        return undefined;
+    }
+
+    public get skipInProgress(): boolean {
+        return this._skipInProgress;
+    }
+
+    public canSkip(): boolean {
+        if (this._skipInProgress) {
+            return false;
+        }
+        const now = Date.now();
+        if (now - this._lastSkipTime < this._skipCooldownMs) {
+            return false;
+        }
+        return true;
+    }
+
+    public startSkip(): boolean {
+        if (!this.canSkip()) {
+            return false;
+        }
+        this._skipInProgress = true;
+        this._lastSkipTime = Date.now();
+        return true;
+    }
+
+    public endSkip(): void {
+        this._skipInProgress = false;
     }
 }

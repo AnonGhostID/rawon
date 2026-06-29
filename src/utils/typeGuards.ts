@@ -110,6 +110,50 @@ export function hasGetGuildIdsWithQueueState(
     );
 }
 
+export function hasGetVoiceChannelStatusState(
+    v: unknown,
+): v is { getVoiceChannelStatusState(guildId: string, botId: string): unknown } {
+    return (
+        typeof v === "object" &&
+        v !== null &&
+        "getVoiceChannelStatusState" in v &&
+        typeof (v as { getVoiceChannelStatusState: unknown }).getVoiceChannelStatusState === "function"
+    );
+}
+
+export function hasGetVoiceChannelStatusStatesByChannel(
+    v: unknown,
+): v is { getVoiceChannelStatusStatesByChannel(guildId: string, channelId: string): unknown[] } {
+    return (
+        typeof v === "object" &&
+        v !== null &&
+        "getVoiceChannelStatusStatesByChannel" in v &&
+        typeof (v as { getVoiceChannelStatusStatesByChannel: unknown }).getVoiceChannelStatusStatesByChannel === "function"
+    );
+}
+
+export function hasSaveVoiceChannelStatusState(
+    v: unknown,
+): v is { saveVoiceChannelStatusState(guildId: string, botId: string, state: unknown): Promise<void> } {
+    return (
+        typeof v === "object" &&
+        v !== null &&
+        "saveVoiceChannelStatusState" in v &&
+        typeof (v as { saveVoiceChannelStatusState: unknown }).saveVoiceChannelStatusState === "function"
+    );
+}
+
+export function hasDeleteVoiceChannelStatusState(
+    v: unknown,
+): v is { deleteVoiceChannelStatusState(guildId: string, botId: string): Promise<void> } {
+    return (
+        typeof v === "object" &&
+        v !== null &&
+        "deleteVoiceChannelStatusState" in v &&
+        typeof (v as { deleteVoiceChannelStatusState: unknown }).deleteVoiceChannelStatusState === "function"
+    );
+}
+
 export interface FfmpegStreamWithEvents {
     stderr?: {
         on?(event: string, cb: (chunk: import("node:buffer").Buffer) => void): void;

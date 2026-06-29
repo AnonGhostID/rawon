@@ -95,7 +95,7 @@ export class RemoveCommand extends ContextCommand {
             client,
             guild: ctx.guild as NonNullable<typeof ctx.guild>,
             member,
-            songs,
+            tracks: songs,
         });
 
         if (!canRemove) {

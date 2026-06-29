@@ -135,9 +135,9 @@ export class PlayCommand extends ContextCommand {
             const notice = isCollectionQuery
                 ? __mf("requestChannel.resolvingPlaylist")
                 : __mf("requestChannel.resolvingSong");
-            await localCtx.editReply({
+            await localCtx.send({
                 embeds: [createEmbed("info", `\ud83d\udd0d **|** ${notice}`)],
-            });
+            }, "editReply");
         }
 
         const songs = await searchTrack(client, query ?? "").catch((error: unknown) => {

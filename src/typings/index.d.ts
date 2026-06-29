@@ -291,6 +291,11 @@ export type GuildData = {
     };
     locale?: string;
     prefix?: string;
+    voiceChannelStatusState?: {
+        channelId: string;
+        originalStatus: string | null;
+        appliedStatus: string;
+    };
 };
 
 export type NonAbstractConstructor<Result = unknown> = new (...args: any[]) => Result;

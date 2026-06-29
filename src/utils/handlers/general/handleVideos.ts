@@ -43,6 +43,18 @@ export async function handleVideos(
     const wasIdle = ctx.guild?.queue?.idle;
     const inRequestChannel = isRequestChannel(client, ctx);
 
+    // 247 mode: clear all queued (non-playing) songs before adding new ones
+    if (ctx.guild?.queue?.stayInChannel && !wasIdle) {
+        const queue = ctx.guild.queue;
+        const playingKey = queue.currentSongKey;
+        queue.songs.forEach((_song, key) => {
+            if (key !== playingKey) {
+                queue.songs.delete(key);
+            }
+        });
+        queue.clearAutoplayPrefetchState();
+    }
+
     const __ = i18n__(client, ctx.guild);
     const __mf = i18n__mf(client, ctx.guild);
 

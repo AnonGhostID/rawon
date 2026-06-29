@@ -213,14 +213,14 @@ export class SearchCommand extends ContextCommand {
         }
 
         if (localCtx.deferred) {
-            await localCtx.editReply({
+            await localCtx.send({
                 embeds: [
                     createEmbed(
                         "info",
                         `\ud83d\udd0d **|** ${__mf("requestChannel.resolvingSong")}`,
                     ),
                 ],
-            });
+            }, "editReply");
         }
 
         const tracks = await searchTrack(client, query ?? "", source as "soundcloud" | "youtube")
