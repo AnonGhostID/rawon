@@ -205,6 +205,7 @@ class CommandsCompatibility {
 export class Rawon extends SapphireClient {
     public startTimestamp = 0;
     public readonly config = config;
+    public mainPrefix: string = config.mainPrefix;
     public readonly data = new SQLiteDataManager<Record<string, GuildData>>(
         path.resolve(process.cwd(), "cache", "data.db"),
     );
@@ -225,7 +226,10 @@ export class Rawon extends SapphireClient {
                     this.debugLog.logData("error", "GOT_REQUEST", [
                         ["URL", error.options.url?.toString() ?? "[???]"],
                         ["Code", error.code],
-                        ["Response", Buffer.from(error.response?.rawBody ?? []).toString("ascii") ?? "[???]"],
+                        [
+                            "Response",
+                            Buffer.from(error.response?.rawBody ?? []).toString("ascii") ?? "[???]",
+                        ],
                     ]);
 
                     return error;

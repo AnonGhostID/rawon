@@ -1,6 +1,12 @@
 import process from "node:process";
 import { setTimeout } from "node:timers";
-import { clientOptions, discordTokens, isMultiBot, isProd } from "../../config/index.js";
+import {
+    clientOptions,
+    discordTokens,
+    isMultiBot,
+    isProd,
+    mainPrefixes,
+} from "../../config/index.js";
 import { Rawon } from "../../structures/Rawon.js";
 import { createScopedLogger } from "./createLogger.js";
 import { MultiBotManager } from "./MultiBotManager.js";
@@ -117,6 +123,13 @@ export class MultiBotLauncher {
             log.warn(`[MultiBot] Bot #${tokenIndex} warning: ${warning}`);
         });
         await client.build(token);
+        // Per-bot prefix: use index-matched prefix if available, else fall back to global default
+        if (mainPrefixes.length > tokenIndex) {
+            client.mainPrefix = mainPrefixes[tokenIndex];
+        } else if (mainPrefixes.length > 0) {
+            client.mainPrefix = mainPrefixes.at(-1)!;
+        }
+        log.info(`[MultiBot] Bot #${tokenIndex} prefix set to: "${client.mainPrefix}"`);
         if (client.user) {
             this.multiBotManager.registerBot(client, tokenIndex, client.user.id);
             log.info(

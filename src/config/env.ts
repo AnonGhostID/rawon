@@ -67,6 +67,17 @@ export const isDev = computedIsDev;
 export const isProd = !computedIsDev;
 
 export const mainPrefix = isDev ? "d!" : (process.env.MAIN_PREFIX ?? "") || "!";
+// Per-bot prefix support: comma-separated mirrors DISCORD_TOKEN
+const rawPrefixes = process.env.MAIN_PREFIX ?? "";
+const prefixArray = rawPrefixes.includes(",")
+    ? rawPrefixes
+          .split(",")
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0)
+    : rawPrefixes.trim().length > 0
+      ? [rawPrefixes.trim()]
+      : [];
+export const mainPrefixes: string[] = prefixArray;
 export const mainServer = parseEnvValue(process.env.MAIN_SERVER ?? "");
 export const devs: string[] = parseEnvValue(process.env.DEVS ?? "");
 export const lang = formatLocale(process.env.LOCALE) || "en-US";

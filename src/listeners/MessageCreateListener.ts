@@ -103,7 +103,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
             prefixList.push(guildPrefix);
         } else {
             prefixList.push(...this.container.data.botSettings.altPrefix);
-            prefixList.push(this.container.config.mainPrefix);
+            prefixList.push(client.mainPrefix);
         }
 
         this.container.logger.debug(
