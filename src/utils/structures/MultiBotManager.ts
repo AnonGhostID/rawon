@@ -352,22 +352,24 @@ export class MultiBotManager {
 
         if (thisBotIsFree) {
             const responsibleBot = this.getBotForVoiceChannel(thisBotGuild, userVoiceChannelId);
-            if (responsibleBot && responsibleBot.user?.id === client.user?.id) {
-                client.logger.debug(
-                    `[MultiBot] ${client.user?.tag} ✅ ALLOWING music command - bot is FREE and selected as responsible for voice channel ${userVoiceChannelId}`,
-                );
-                return true;
+            if (responsibleBot && responsibleBot.user?.id !== client.user?.id) {
+                // Only block if the responsible bot is ACTUALLY in the channel or has an active queue for it.
+                // If it's just a free-selection default, allow this bot (user chose its prefix).
+                const respGuild = responsibleBot.guilds.cache.get(thisBotGuild.id);
+                const respVoice = respGuild?.members.me?.voice.channelId ?? null;
+                const respQueue = respGuild?.queue?.connection?.joinConfig.channelId ?? null;
+                if (respVoice === userVoiceChannelId || respQueue === userVoiceChannelId) {
+                    client.logger.debug(
+                        `[MultiBot] ${client.user?.tag} ❌ bot is free but ${responsibleBot.user?.tag} is already active in voice channel ${userVoiceChannelId}`,
+                    );
+                    return false;
+                }
             }
-            if (responsibleBot) {
-                client.logger.debug(
-                    `[MultiBot] ${client.user?.tag} ❌ bot is free but another bot (${responsibleBot.user?.tag}) is responsible for voice channel ${userVoiceChannelId}`,
-                );
-            } else {
-                client.logger.debug(
-                    `[MultiBot] ${client.user?.tag} ❌ bot is free but no responsible bot found for voice channel ${userVoiceChannelId}`,
-                );
-            }
-            return false;
+            // No other bot is actively in the user's voice channel — allow this free bot to respond
+            client.logger.debug(
+                `[MultiBot] ${client.user?.tag} ✅ ALLOWING music command - bot is FREE and no other bot is active in voice channel ${userVoiceChannelId}`,
+            );
+            return true;
         }
 
         const responsibleBot = this.getBotForVoiceChannel(thisBotGuild, userVoiceChannelId);
