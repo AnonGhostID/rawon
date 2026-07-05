@@ -665,7 +665,7 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
         }
 
         return newText
-            .replaceAll("{prefix}", this.container.config.mainPrefix)
+            .replaceAll("{prefix}", this.currentClient.mainPrefix)
             .replaceAll("{username}", client.user?.username ?? "");
     }
 
