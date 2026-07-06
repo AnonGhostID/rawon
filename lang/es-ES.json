@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <consulta / url>"
             },
             "queue": {
-                "description": "Muestra la cola de reproducción"
+                "description": "Muestra la cola de reproducción",
+                "clearDescription": "Limpiar todas las canciones de la cola",
+                "queueCleared": "Cola limpiada. La canción actual continúa reproduciéndose.",
+                "slashClear": "Limpiar todas las canciones de la cola",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Quita canciones de la cola",

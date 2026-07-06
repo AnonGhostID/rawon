@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <검색어 | URL>"
             },
             "queue": {
-                "description": "대기열 목록 보기"
+                "description": "대기열 목록 보기",
+                "clearDescription": "대기열에서 모든 곡 삭제",
+                "queueCleared": "대기열이 비워졌습니다. 현재 곡이 계속 재생됩니다.",
+                "slashClear": "대기열에서 모든 곡 삭제",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "대기열에서 노래 삭제",

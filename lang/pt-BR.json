@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <busca | url>"
             },
             "queue": {
-                "description": "Mostra as músicas da fila"
+                "description": "Mostra as músicas da fila",
+                "clearDescription": "Limpar todas as músicas da fila",
+                "queueCleared": "Fila limpa. A música atual continua tocando.",
+                "slashClear": "Limpar todas as músicas da fila",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Remove música(s) da fila",

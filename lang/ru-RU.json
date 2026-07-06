@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <запрос | url>"
             },
             "queue": {
-                "description": "Показать очередь"
+                "description": "Показать очередь",
+                "clearDescription": "Очистить все песни из очереди",
+                "queueCleared": "Очередь очищена. Текущая песня продолжает играть.",
+                "slashClear": "Очистить все песни из очереди",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Удалить песню из очереди",

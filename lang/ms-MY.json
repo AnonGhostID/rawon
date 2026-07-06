@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <carian | url>"
             },
             "queue": {
-                "description": "Tunjukkan senarai giliran"
+                "description": "Tunjukkan senarai giliran",
+                "clearDescription": "Kosongkan semua lagu daripada giliran",
+                "queueCleared": "Giliran telah dikosongkan. Lagu semasa terus dimainkan.",
+                "slashClear": "Kosongkan semua lagu daripada giliran",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Padam lagu dari giliran",

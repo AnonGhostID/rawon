@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <truy vấn | url>"
             },
             "queue": {
-                "description": "Hiển thị danh sách hàng đợi"
+                "description": "Hiển thị danh sách hàng đợi",
+                "clearDescription": "Xóa tất cả bài hát khỏi hàng đợi",
+                "queueCleared": "Hàng đợi đã được xóa. Bài hát hiện tại tiếp tục phát.",
+                "slashClear": "Xóa tất cả bài hát khỏi hàng đợi",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Xóa (các) bài hát khỏi hàng đợi",

@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <查询 | url>"
             },
             "queue": {
-                "description": "显示队列列表"
+                "description": "显示队列列表",
+                "clearDescription": "清空队列中的所有歌曲",
+                "queueCleared": "队列已清空。当前歌曲继续播放。",
+                "slashClear": "清空队列中的所有歌曲",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "从队列中移除歌曲",

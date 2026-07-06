@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <キーワード | URL>"
             },
             "queue": {
-                "description": "キューリストを表示"
+                "description": "キューリストを表示",
+                "clearDescription": "キュー内のすべての曲をクリアします",
+                "queueCleared": "キューをクリアしました。現在の曲は再生を続けます。",
+                "slashClear": "キュー内のすべての曲をクリアします",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "キューから曲を削除",

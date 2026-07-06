@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <запит | url>"
             },
             "queue": {
-                "description": "Показати чергу"
+                "description": "Показати чергу",
+                "clearDescription": "Очистити всі пісні з черги",
+                "queueCleared": "Чергу очищено. Поточна пісня продовжує грати.",
+                "slashClear": "Очистити всі пісні з черги",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Вилучити пісню з черги",

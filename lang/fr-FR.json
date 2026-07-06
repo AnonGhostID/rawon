@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <requête | url>"
             },
             "queue": {
-                "description": "Afficher la liste de la file d'attente"
+                "description": "Afficher la liste de la file d'attente",
+                "clearDescription": "Supprimer toutes les chansons de la file d'attente",
+                "queueCleared": "File d'attente effacée. La chanson en cours continue de jouer.",
+                "slashClear": "Supprimer toutes les chansons de la file d'attente",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Retirer le(s) morceau(x) de la file d'attente",

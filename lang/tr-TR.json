@@ -246,7 +246,11 @@
                 "usage": "{prefix}play <sorgu | url>"
             },
             "queue": {
-                "description": "Kuyruk listesini göster"
+                "description": "Kuyruk listesini göster",
+                "clearDescription": "Kuyruktaki tüm şarkıları temizle",
+                "queueCleared": "Kuyruk temizlendi. Mevcut şarkı çalmaya devam ediyor.",
+                "slashClear": "Kuyruktaki tüm şarkıları temizle",
+                "usage": "{prefix}queue [clear]"
             },
             "remove": {
                 "description": "Şarkı(lar)ı kuyruktan kaldırır",
