@@ -363,14 +363,51 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                         );
                         return;
                     }
-                } else if (
-                    !isMentionPrefix &&
-                    !client.multiBotManager.shouldRespond(client, thisBotGuild)
-                ) {
-                    this.container.logger.debug(
-                        `[MultiBot] ${client.user?.tag} skipping prefix command "${cmdName}" - not responsible bot`,
-                    );
-                    return;
+                } else {
+                    // Non-music command: route to the bot the user is in a voice
+                    // channel with (if any), otherwise fall back to guild-level
+                    // responsible bot. This ensures e.g. `?help play` reaches the
+                    // same bot that suggested it via `?play`'s error message.
+                    let member = thisBotGuild.members.cache.get(message.author.id);
+                    if (!member) {
+                        try {
+                            const fetchedMember = await thisBotGuild.members
+                                .fetch(message.author.id)
+                                .catch(() => null);
+                            if (fetchedMember) {
+                                member = fetchedMember;
+                            }
+                        } catch {
+                            if (message.member && message.member.guild.id === thisBotGuild.id) {
+                                member = message.member;
+                            }
+                        }
+                    }
+                    if (!member && message.member && message.member.guild.id === thisBotGuild.id) {
+                        member = message.member;
+                    }
+
+                    const userVoiceChannelId = member?.voice.channelId ?? null;
+                    let shouldHandle = false;
+
+                    if (userVoiceChannelId) {
+                        shouldHandle = client.multiBotManager.shouldRespondToMusicCommand(
+                            client,
+                            thisBotGuild,
+                            userVoiceChannelId,
+                        );
+                    } else if (!isMentionPrefix) {
+                        shouldHandle = client.multiBotManager.shouldRespond(client, thisBotGuild);
+                    } else {
+                        shouldHandle = true;
+                    }
+
+                    if (!shouldHandle) {
+                        this.container.logger.debug(
+                            `[MultiBot] ${client.user?.tag} skipping prefix command "${cmdName}" - not responsible bot`,
+                        );
+                        return;
+                    }
                 }
             }
             this.container.logger.debug(
