@@ -19,10 +19,24 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
     private readonly db: DatabaseBackend;
     private readonly manager = new OperationManager();
     private _data: T | null = null;
+    private _botQueueStates = new Map<string, Map<string, NonNullable<GuildData["queueState"]>>>();
+    private _botPlayerStates = new Map<string, Map<string, NonNullable<GuildData["playerState"]>>>();
+    private _botRequestChannels = new Map<string, Map<string, NonNullable<GuildData["requestChannel"]>>>()
 
     public constructor(public readonly dbPath: string) {
         this.ensureDirectory();
         this.db = createBackend(this.dbPath);
+    }
+    private ensureBotMap<K>(
+        map: Map<string, Map<string, K>>,
+        guildId: string,
+    ): Map<string, K> {
+        let inner = map.get(guildId);
+        if (!inner) {
+            inner = new Map();
+            map.set(guildId, inner);
+        }
+        return inner;
     }
 
     private ensureDirectory(): void {
@@ -167,12 +181,14 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
 
                 const requestChannels = await this.db.all<{
                     guild_id: string;
+                    bot_id: string;
                     channel_id: string | null;
                     message_id: string | null;
                 }>("SELECT * FROM request_channels");
 
                 const playerStates = await this.db.all<{
                     guild_id: string;
+                    bot_id: string;
                     loop_mode: string;
                     shuffle: number;
                     autoplay: number;
@@ -183,6 +199,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
 
                 const queueStates = await this.db.all<{
                     guild_id: string;
+                    bot_id: string;
                     text_channel_id: string;
                     voice_channel_id: string;
                     songs_json: string;
@@ -205,34 +222,16 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                                 : undefined,
                     };
                 }
-
-                const requestChannelsByGuild = new Map<
-                    string,
-                    { channel_id: string | null; message_id: string | null }
-                >();
+                this._botRequestChannels.clear();
                 for (const rc of requestChannels) {
-                    if (!requestChannelsByGuild.has(rc.guild_id)) {
-                        requestChannelsByGuild.set(rc.guild_id, {
-                            channel_id: rc.channel_id,
-                            message_id: rc.message_id,
-                        });
-                    }
-                }
-
-                for (const [guildId, rc] of requestChannelsByGuild.entries()) {
-                    if (!data[guildId]) {
-                        data[guildId] = {};
-                    }
-                    data[guildId].requestChannel = {
+                    this.ensureBotMap(this._botRequestChannels, rc.guild_id).set(rc.bot_id, {
                         channelId: rc.channel_id,
                         messageId: rc.message_id,
-                    };
+                    });
                 }
 
+                this._botPlayerStates.clear();
                 for (const ps of playerStates) {
-                    if (!data[ps.guild_id]) {
-                        data[ps.guild_id] = {};
-                    }
                     let filters: Record<string, boolean> = {};
                     if (ps.filters_json) {
                         try {
@@ -241,28 +240,27 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                             filters = {};
                         }
                     }
-                    data[ps.guild_id].playerState = {
+                    this.ensureBotMap(this._botPlayerStates, ps.guild_id).set(ps.bot_id, {
                         loopMode: (ps.loop_mode ?? "OFF") as LoopMode,
                         shuffle: ps.shuffle === 1,
                         autoplay: ps.autoplay === 1,
                         stayInChannel: ps.stay_in_channel === 1,
                         volume: ps.volume ?? this.botSettings.defaultVolume,
                         filters,
-                    };
+                    });
                 }
 
+                this._botQueueStates.clear();
                 for (const qs of queueStates) {
-                    if (!data[qs.guild_id]) {
-                        data[qs.guild_id] = {};
-                    }
-                    data[qs.guild_id].queueState = {
+                    this.ensureBotMap(this._botQueueStates, qs.guild_id).set(qs.bot_id, {
                         textChannelId: qs.text_channel_id,
                         voiceChannelId: qs.voice_channel_id,
                         songs: JSON.parse(qs.songs_json),
                         currentSongKey: qs.current_song_key,
                         currentPosition: qs.current_position,
-                    };
+                    });
                 }
+
 
                 this._data = data as T;
             });
@@ -306,17 +304,17 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
         return this.load() as Promise<T | null>;
     }
 
-    public getGuildIdsWithQueueState(_botId: string): string[] {
-        if (!this._data) {
-            return [];
+    public getGuildIdsWithQueueState(botId: string): string[] {
+        const guildIds: string[] = [];
+        for (const [guildId, botMap] of this._botQueueStates) {
+            if (botMap.has(botId)) {
+                guildIds.push(guildId);
+            }
         }
-        return Object.entries(this._data)
-            .filter(([, gd]) => gd?.queueState != null)
-            .map(([gid]) => gid);
+        return guildIds;
     }
-
-    public getQueueState(guildId: string, _botId: string): GuildData["queueState"] | null {
-        return this._data?.[guildId]?.queueState ?? null;
+    public getQueueState(guildId: string, botId: string): GuildData["queueState"] | null {
+        return this._botQueueStates.get(guildId)?.get(botId) ?? null;
     }
 
     public async saveQueueState(
@@ -361,15 +359,9 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 queueState.currentSongKey ?? null,
                 queueState.currentPosition ?? 0,
             );
-
-            if (!this._data) {
-                this._data = {} as T;
+            if (queueState) {
+                this.ensureBotMap(this._botQueueStates, guildId).set(botId, queueState);
             }
-            const data = this._data as Record<string, GuildData>;
-            if (!data[guildId]) {
-                data[guildId] = {};
-            }
-            data[guildId].queueState = queueState;
         });
     }
 
@@ -380,15 +372,11 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 guildId,
                 botId,
             );
-
-            if (this._data?.[guildId]) {
-                this._data[guildId].queueState = undefined;
-            }
+            this._botQueueStates.get(guildId)?.delete(botId);
         });
     }
-
-    public getPlayerState(guildId: string, _botId: string): GuildData["playerState"] | null {
-        return this._data?.[guildId]?.playerState ?? null;
+    public getPlayerState(guildId: string, botId: string): GuildData["playerState"] | null {
+        return this._botPlayerStates.get(guildId)?.get(botId) ?? null;
     }
 
     public async savePlayerState(
@@ -436,14 +424,9 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 JSON.stringify(playerState.filters),
             );
 
-            if (!this._data) {
-                this._data = {} as T;
+            if (playerState) {
+                this.ensureBotMap(this._botPlayerStates, guildId).set(botId, playerState);
             }
-            const data = this._data as Record<string, GuildData>;
-            if (!data[guildId]) {
-                data[guildId] = {};
-            }
-            data[guildId].playerState = playerState;
         });
     }
 
@@ -455,17 +438,15 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 botId,
             );
 
-            if (this._data?.[guildId]) {
-                this._data[guildId].playerState = undefined;
-            }
+            this._botPlayerStates.get(guildId)?.delete(botId);
         });
     }
 
     public getRequestChannel(
         guildId: string,
-        _botId: string,
+        botId: string,
     ): { channelId: string | null; messageId: string | null } | null {
-        return this._data?.[guildId]?.requestChannel ?? null;
+        return this._botRequestChannels.get(guildId)?.get(botId) ?? null;
     }
 
     public async saveRequestChannel(
@@ -502,14 +483,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 messageId,
             );
 
-            if (!this._data) {
-                this._data = {} as T;
-            }
-            const data = this._data as Record<string, GuildData>;
-            if (!data[guildId]) {
-                data[guildId] = {};
-            }
-            data[guildId].requestChannel = { channelId, messageId };
+            this.ensureBotMap(this._botRequestChannels, guildId).set(botId, { channelId, messageId });
         });
     }
 
@@ -520,10 +494,7 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 guildId,
                 botId,
             );
-
-            if (this._data?.[guildId]) {
-                this._data[guildId].requestChannel = undefined;
-            }
+            this._botRequestChannels.get(guildId)?.delete(botId);
         });
     }
 
@@ -584,6 +555,9 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
             if (this._data) {
                 delete this._data[guildId];
             }
+            this._botQueueStates.delete(guildId);
+            this._botPlayerStates.delete(guildId);
+            this._botRequestChannels.delete(guildId);
         });
     }
 
