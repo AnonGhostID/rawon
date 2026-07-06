@@ -248,7 +248,7 @@
             "queue": {
                 "description": "Cek daftar antrian",
                 "clearDescription": "Hapus semua lagu dari antrian",
-                "queueCleared": "Antrian dihapus. Lagu yang sedang diputar terus diputar.",
+                "queueCleared": "Antrian dihapus. Mode Autoplay dimatikan.",
                 "slashClear": "Hapus semua lagu dari antrian",
                 "usage": "{prefix}queue [clear]"
             },

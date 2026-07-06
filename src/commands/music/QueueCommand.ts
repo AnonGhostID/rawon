@@ -77,7 +77,8 @@ export class QueueCommand extends ContextCommand {
                 }
             });
 
-            queue.clearAutoplayPrefetchState();
+            queue.setAutoPlay(false);
+            void queue.saveState();
 
             await ctx.reply({
                 embeds: [createEmbed("success", `🧹 **|** ${__("commands.music.queue.queueCleared")}`)],
