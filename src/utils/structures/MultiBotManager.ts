@@ -255,6 +255,36 @@ export class MultiBotManager {
         );
         return null;
     }
+    /**
+     * Find the bot that has an active queue (playing or has songs) in a guild.
+     * Returns null if no bot is actively playing. Used to build redirect
+     * messages when a non-responsible bot receives a command.
+     */
+    public getActiveBot(
+        guildId: Snowflake,
+    ): { botInstance: BotInstance; voiceChannelId: Snowflake | null } | null {
+        if (!isMultiBot) {
+            return null;
+        }
+
+        for (const bot of this.bots.values()) {
+            const botGuild = bot.client.guilds.cache.get(guildId);
+            if (!botGuild) {
+                continue;
+            }
+            const queue = botGuild.queue;
+            if (!queue) {
+                continue;
+            }
+            const voiceChannelId = queue.connection?.joinConfig?.channelId ?? null;
+            const hasSongs = queue.songs.size > 0;
+            if (hasSongs || queue.playing) {
+                return { botInstance: bot, voiceChannelId };
+            }
+        }
+        return null;
+    }
+
 
     public shouldRespond(client: Rawon, guild: Guild): boolean {
         if (!isMultiBot) {

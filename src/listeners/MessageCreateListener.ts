@@ -16,6 +16,7 @@ import { ServerQueue } from "../structures/ServerQueue.js";
 import { createEmbed } from "../utils/functions/createEmbed.js";
 import { createVoiceAdapter } from "../utils/functions/createVoiceAdapter.js";
 import { formatBoldCodeSpan } from "../utils/functions/formatCodeSpan.js";
+import { getEffectivePrefix } from "../utils/functions/getEffectivePrefix.js";
 import { i18n__, i18n__mf } from "../utils/functions/i18n.js";
 import { isPlaybackMusicCommand } from "../utils/functions/musicCommandTarget.js";
 import { searchTrack } from "../utils/handlers/GeneralUtil.js";
@@ -349,6 +350,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                                     `- NOT in same voice channel (user in: ${userVoiceChannelId}). ` +
                                     `RETURNING EARLY - COMMAND WILL NOT BE EXECUTED!`,
                             );
+                            await this.sendActiveBotRedirect(message, client, cmdName);
                             return;
                         }
                         this.container.logger.debug(
@@ -358,9 +360,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                         !isMentionPrefix &&
                         !client.multiBotManager.shouldRespond(client, thisBotGuild)
                     ) {
-                        this.container.logger.debug(
-                            `[MultiBot] ${client.user?.tag} skipping music command "${cmdName}" - user not in voice and not responsible bot`,
-                        );
+                        await this.sendActiveBotRedirect(message, client, cmdName);
                         return;
                     }
                 } else {
@@ -406,6 +406,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                         this.container.logger.debug(
                             `[MultiBot] ${client.user?.tag} skipping prefix command "${cmdName}" - not responsible bot`,
                         );
+                        await this.sendActiveBotRedirect(message, client, cmdName);
                         return;
                     }
                 }
@@ -659,6 +660,35 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
             }
         }
         this.sendTemporaryReply(message, confirmEmbed);
+    }
+    /**
+     * If another bot is actively playing in this guild, send a redirect
+     * embed telling the user which bot to use instead.
+     */
+    private async sendActiveBotRedirect(
+        message: Message,
+        client: Rawon,
+        cmdName: string,
+    ): Promise<void> {
+        const activeBot = client.multiBotManager.getActiveBot(message.guild!.id);
+        if (!activeBot) {
+            return;
+        }
+        const activePrefix = getEffectivePrefix(
+            activeBot.botInstance.client,
+            message.guild!.id,
+        );
+        const channelName = activeBot.voiceChannelId
+            ? `<#${activeBot.voiceChannelId}>`
+            : "a voice channel";
+        await this.sendTemporaryReply(
+            message,
+            createEmbed(
+                "warn",
+                `${activeBot.botInstance.client.user?.tag} is currently active in ${channelName}. ` +
+                    `Use ${formatBoldCodeSpan(`${activePrefix}${cmdName}`)} instead.`,
+            ),
+        );
     }
 
     private sendTemporaryReply(message: Message, embed: ReturnType<typeof createEmbed>): void {
