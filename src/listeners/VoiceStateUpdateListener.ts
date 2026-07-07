@@ -109,7 +109,7 @@ export class VoiceStateUpdateListener extends Listener<typeof Events.VoiceStateU
                 queue.textChannel.id,
             );
 
-            await queue.destroy();
+            await queue.destroy(true);
             if (!isIdle) {
                 this.container.logger.info(
                     `${
@@ -218,7 +218,7 @@ export class VoiceStateUpdateListener extends Listener<typeof Events.VoiceStateU
                         }, 10_000);
                     }
                 } catch {
-                    await queue.destroy();
+                    await queue.destroy(true);
                     this.container.logger.info(
                         `${
                             client.shard ? `[Shard #${client.shard.ids[0]}]` : ""
@@ -253,7 +253,7 @@ export class VoiceStateUpdateListener extends Listener<typeof Events.VoiceStateU
                     .catch((error: unknown) => ({ error }));
 
                 if ("error" in suppress) {
-                    await queue.destroy();
+                    await queue.destroy(true);
                     this.container.logger.info(
                         `${
                             client.shard ? `[Shard #${client.shard.ids[0]}]` : ""
@@ -347,7 +347,7 @@ export class VoiceStateUpdateListener extends Listener<typeof Events.VoiceStateU
 
         queue.lastVSUpdateMsg = null;
         (guild.queue as ServerQueue).timeout = setTimeout(async () => {
-            await queue.destroy();
+            await queue.destroy(true);
             void (async () => {
                 const msg = await queue.textChannel.send({
                     flags: MessageFlags.SuppressNotifications,

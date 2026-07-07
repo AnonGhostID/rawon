@@ -728,7 +728,7 @@ export class ServerQueue {
         this.player.stop(true);
     }
 
-    public async destroy(): Promise<void> {
+    public async destroy(preserveState = false): Promise<void> {
         let songUrls = this.songs.map((song) => song.song.url);
         if (
             (songUrls.length === 0 || songUrls.every((s) => !s)) &&
@@ -758,21 +758,27 @@ export class ServerQueue {
         }
 
         clearTimeout(this.timeout ?? undefined);
-        await this.clearQueueState();
+        if (!preserveState) {
+            await this.clearQueueState();
 
-        if (this.client.config.isMultiBot) {
-            const botInstance = this.client.multiBotManager.getBotByClient(this.client);
-            if (botInstance && !botInstance.isPrimary) {
-                await this.clearPlayerState();
-                await this.client.requestChannelManager.deletePlayerMessage(this.textChannel.guild);
-                this.client.logger.info(
-                    `[MultiBot] ${this.client.user?.tag} (non-primary) cleared player state on destroy`,
-                );
-            } else {
-                this.client.logger.info(
-                    `[MultiBot] ${this.client.user?.tag} (primary) preserving player state on destroy`,
-                );
+            if (this.client.config.isMultiBot) {
+                const botInstance = this.client.multiBotManager.getBotByClient(this.client);
+                if (botInstance && !botInstance.isPrimary) {
+                    await this.clearPlayerState();
+                    await this.client.requestChannelManager.deletePlayerMessage(this.textChannel.guild);
+                    this.client.logger.info(
+                        `[MultiBot] ${this.client.user?.tag} (non-primary) cleared player state on destroy`,
+                    );
+                } else {
+                    this.client.logger.info(
+                        `[MultiBot] ${this.client.user?.tag} (primary) preserving player state on destroy`,
+                    );
+                }
             }
+        } else {
+            this.client.logger.info(
+                `[ServerQueue] destroy(preserveState=true): skipping state clear for ${this.client.user?.tag} in guild ${this.textChannel.guild.name}`,
+            );
         }
 
         delete this.textChannel.guild.queue;

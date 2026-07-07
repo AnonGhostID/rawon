@@ -77,7 +77,7 @@ export class ChannelUpdateListener extends Listener<typeof Events.ChannelUpdate>
                     return 0;
                 })
                 .catch(async () => {
-                    await queue.destroy();
+                    await queue.destroy(true);
                     this.container.logger.info(
                         `${
                             client.shard ? `[Shard #${client.shard.ids[0]}]` : ""
