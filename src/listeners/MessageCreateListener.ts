@@ -277,12 +277,6 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
 
         if (shouldRespondToMention) {
             let prefixToShow = guildPrefix || client.mainPrefix;
-            if (!guildPrefix && this.container.config.isMultiBot) {
-                const primaryBot = client.multiBotManager.getPrimaryBot();
-                if (primaryBot) {
-                    prefixToShow = primaryBot.mainPrefix;
-                }
-            }
 
             await message
                 .reply({
