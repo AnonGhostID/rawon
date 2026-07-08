@@ -386,6 +386,8 @@
             "primaryBotFallback": "기본 봇"
         },
         "createMessage": "안녕하세요 {author}님, 제 접두사는 {prefix}예요",
+        "botRedirect": "{botTag}이(가) {channel}에서 현재 활성 상태예요. 대신 {command}을(를) 사용해 주세요.",
+        "voiceChannelFallback": "음성 채널",
         "cmdLoading": "로딩 중...",
         "voiceStateUpdate": {
             "connectionReconfigured": "연결이 성공적으로 재구성되었어요.",

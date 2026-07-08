@@ -386,6 +386,8 @@
             "primaryBotFallback": "le bot principal"
         },
         "createMessage": "Salut {author}, mon préfixe est {prefix}",
+        "botRedirect": "{botTag} est actuellement actif dans {channel}. Utilisez {command} à la place.",
+        "voiceChannelFallback": "un salon vocal",
         "cmdLoading": "Chargement en cours...",
         "voiceStateUpdate": {
             "connectionReconfigured": "La connexion a été reconfigurée avec succès.",

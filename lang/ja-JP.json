@@ -386,6 +386,8 @@
             "primaryBotFallback": "メインボット"
         },
         "createMessage": "こんにちは、{author}、私のプレフィックスは{prefix}です。",
+        "botRedirect": "{botTag} が {channel} で現在アクティブです。代わりに {command} を使ってください。",
+        "voiceChannelFallback": "ボイスチャンネル",
         "cmdLoading": "起動中...",
         "voiceStateUpdate": {
             "connectionReconfigured": "接続は正常に再構成されました。",

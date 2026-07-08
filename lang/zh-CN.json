@@ -386,6 +386,8 @@
             "primaryBotFallback": "主机器人"
         },
         "createMessage": "你好 {author}, 我的前缀是 {prefix}",
+        "botRedirect": "{botTag} 目前在 {channel} 中活跃。请改用 {command}。",
+        "voiceChannelFallback": "语音频道",
         "cmdLoading": "加载中...",
         "voiceStateUpdate": {
             "connectionReconfigured": "已成功重新配置连接。",

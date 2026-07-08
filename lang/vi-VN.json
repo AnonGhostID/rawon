@@ -386,6 +386,8 @@
             "primaryBotFallback": "bot chính"
         },
         "createMessage": "Chào {author}, tiền tố của tôi là {prefix}",
+        "botRedirect": "{botTag} hiện đang hoạt động trong {channel}. Hãy dùng {command} thay thế.",
+        "voiceChannelFallback": "kênh thoại",
         "cmdLoading": "Đang tải...",
         "voiceStateUpdate": {
             "connectionReconfigured": "Kết nối lại cấu hình thành công.",

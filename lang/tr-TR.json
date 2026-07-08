@@ -386,6 +386,8 @@
             "primaryBotFallback": "ana bot"
         },
         "createMessage": "Merhaba {author}, benim ön ekim: {prefix}",
+        "botRedirect": "{botTag} şu anda {channel} kanalında aktif. Bunun yerine {command} kullanın.",
+        "voiceChannelFallback": "bir ses kanalı",
         "cmdLoading": "Yükleniyor...",
         "voiceStateUpdate": {
             "connectionReconfigured": "Bağlantı başarıyla yeniden yapılandırıldı.",

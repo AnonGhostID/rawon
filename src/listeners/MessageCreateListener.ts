@@ -668,16 +668,20 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
         if (!activeBot) {
             return;
         }
+        const __mf = i18n__mf(client, message.guild);
         const activePrefix = getEffectivePrefix(activeBot.botInstance.client, message.guild!.id);
         const channelName = activeBot.voiceChannelId
             ? `<#${activeBot.voiceChannelId}>`
-            : "a voice channel";
+            : __mf("events.voiceChannelFallback", {});
         await this.sendTemporaryReply(
             message,
             createEmbed(
                 "warn",
-                `${activeBot.botInstance.client.user?.tag} is currently active in ${channelName}. ` +
-                    `Use ${formatBoldCodeSpan(`${activePrefix}${cmdName}`)} instead.`,
+                __mf("events.botRedirect", {
+                    botTag: activeBot.botInstance.client.user?.tag ?? "",
+                    channel: channelName,
+                    command: formatBoldCodeSpan(`${activePrefix}${cmdName}`),
+                }),
             ),
         );
     }

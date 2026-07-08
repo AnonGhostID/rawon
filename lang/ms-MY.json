@@ -386,6 +386,8 @@
             "primaryBotFallback": "bot utama"
         },
         "createMessage": "Hai {author}, prefix saya ialah {prefix}",
+        "botRedirect": "{botTag} sedang aktif di {channel}. Gunakan {command} sebaliknya.",
+        "voiceChannelFallback": "saluran suara",
         "cmdLoading": "Memuat...",
         "voiceStateUpdate": {
             "connectionReconfigured": "Sambungan berjaya dikonfigurasi semula.",

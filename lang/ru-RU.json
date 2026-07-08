@@ -386,6 +386,8 @@
             "primaryBotFallback": "основной бот"
         },
         "createMessage": "Привет {author}, мой префикс {prefix}",
+        "botRedirect": "{botTag} сейчас активен в {channel}. Используйте {command} вместо этого.",
+        "voiceChannelFallback": "голосовой канал",
         "cmdLoading": "Загрузка...",
         "voiceStateUpdate": {
             "connectionReconfigured": "Соединение успешно перенастроено.",

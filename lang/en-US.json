@@ -386,6 +386,8 @@
             "primaryBotFallback": "the primary bot"
         },
         "createMessage": "Hi {author}, my prefix is {prefix}",
+        "botRedirect": "{botTag} is currently active in {channel}. Use {command} instead.",
+        "voiceChannelFallback": "a voice channel",
         "cmdLoading": "Loading...",
         "voiceStateUpdate": {
             "connectionReconfigured": "Connection successfully re-configured.",

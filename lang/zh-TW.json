@@ -386,6 +386,8 @@
             "primaryBotFallback": "主機器人"
         },
         "createMessage": "你好 {author}, 我的前綴是 {prefix}",
+        "botRedirect": "{botTag} 目前在 {channel} 中活躍。請改用 {command}。",
+        "voiceChannelFallback": "語音頻道",
         "cmdLoading": "加載中...",
         "voiceStateUpdate": {
             "connectionReconfigured": "已成功重新配置連接。",

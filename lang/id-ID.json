@@ -386,6 +386,8 @@
             "primaryBotFallback": "bot utama/primer"
         },
         "createMessage": "Halo {author}, prefix-ku {prefix}",
+        "botRedirect": "{botTag} lagi aktif di {channel}. Pake {command} aja.",
+        "voiceChannelFallback": "voice channel",
         "cmdLoading": "Loading...",
         "voiceStateUpdate": {
             "connectionReconfigured": "Koneksi udah dikonfigurasi ulang.",
