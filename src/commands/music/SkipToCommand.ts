@@ -21,7 +21,7 @@ import { play } from "../../utils/handlers/GeneralUtil.js";
     aliases: ["st"],
     description: i18n.__("commands.music.skipTo.description"),
     detailedDescription: {
-        usage: i18n.__mf("commands.music.skipTo.usage", { options: "first | last" }),
+        usage: i18n.__mf("commands.music.skipTo.usage", { prefix: "{prefix}", options: "first | last" }),
     },
     requiredClientPermissions: [
         PermissionFlagsBits.ViewChannel,

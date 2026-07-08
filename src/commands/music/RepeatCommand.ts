@@ -21,7 +21,7 @@ import { i18n__mf } from "../../utils/functions/i18n.js";
     aliases: ["loop", "music-repeat", "music-loop"],
     description: i18n.__("commands.music.repeat.description"),
     detailedDescription: {
-        usage: i18n.__mf("commands.music.repeat.usage", { options: "queue | one | disable" }),
+        usage: i18n.__mf("commands.music.repeat.usage", { prefix: "{prefix}", options: "queue | one | disable" }),
     },
     requiredClientPermissions: [
         PermissionFlagsBits.ViewChannel,
