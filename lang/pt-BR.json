@@ -249,6 +249,10 @@
                 "description": "Mostra as músicas da fila",
                 "clearDescription": "Limpar todas as músicas da fila",
                 "queueCleared": "Fila limpa. A música atual continua tocando.",
+                "nowPlaying": "TOCANDO AGORA",
+                "upNext": "A SEGUIR",
+                "trackInfo": "`{duration}` | Pedida por {requester}",
+                "queueStats": "{count} músicas | {duration}",
                 "slashClear": "Limpar todas as músicas da fila",
                 "usage": "{prefix}queue [clear]"
             },

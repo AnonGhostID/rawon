@@ -249,6 +249,10 @@
                 "description": "Hiển thị danh sách hàng đợi",
                 "clearDescription": "Xóa tất cả bài hát khỏi hàng đợi",
                 "queueCleared": "Hàng đợi đã được xóa. Bài hát hiện tại tiếp tục phát.",
+                "nowPlaying": "ĐANG PHÁT",
+                "upNext": "TIẾP THEO",
+                "trackInfo": "`{duration}` | Yêu cầu bởi {requester}",
+                "queueStats": "{count} bài hát | {duration}",
                 "slashClear": "Xóa tất cả bài hát khỏi hàng đợi",
                 "usage": "{prefix}queue [clear]"
             },

@@ -249,6 +249,10 @@
                 "description": "Tunjukkan senarai giliran",
                 "clearDescription": "Kosongkan semua lagu daripada giliran",
                 "queueCleared": "Giliran telah dikosongkan. Lagu semasa terus dimainkan.",
+                "nowPlaying": "SEDANG DIMAINKAN",
+                "upNext": "SETERUSNYA",
+                "trackInfo": "`{duration}` | Diminta oleh {requester}",
+                "queueStats": "{count} lagu | {duration}",
                 "slashClear": "Kosongkan semua lagu daripada giliran",
                 "usage": "{prefix}queue [clear]"
             },

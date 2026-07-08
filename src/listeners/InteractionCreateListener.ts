@@ -30,6 +30,7 @@ import { createEmbed } from "../utils/functions/createEmbed.js";
 import { formatBoldMarkdownLink } from "../utils/functions/formatMarkdown.js";
 import { i18n__, i18n__mf } from "../utils/functions/i18n.js";
 import { isPlaybackMusicCommand } from "../utils/functions/musicCommandTarget.js";
+import { formatDuration, normalizeTime } from "../utils/functions/normalizeTime.js";
 
 function hasSlashCommand(cmd: Command): boolean {
     return cmd.options.chatInputCommand !== undefined;
@@ -1220,34 +1221,80 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
                     });
                     return;
                 }
-
                 const np = (queue.player.state as AudioPlayerPlayingState).resource
                     .metadata as QueueSong;
                 const full = queue.songs.sortByIndex();
                 const songs =
                     queue.loopMode === "QUEUE" ? full : full.filter((val) => val.index >= np.index);
-                const pages = chunk([...songs.values()], 10).map((sngs, ind) => {
-                    const names = sngs.map((song, i) => {
-                        const npKey = np.key;
-                        const addition = song.key === npKey ? "**" : "";
+                const totalDuration = [...songs.values()].reduce(
+                    (acc, s) => acc + (s.song.isLive ? 0 : s.song.duration),
+                    0,
+                );
+                const totalSongs = songs.size;
 
-                        return `${addition}${ind * 10 + (i + 1)} - [${song.song.title}](${song.song.url})${addition}`;
+                const formatSongDuration = (song: QueueSong): string =>
+                    song.song.isLive ? "LIVE" : normalizeTime(song.song.duration);
+
+                const nowPlayingLine = `### ▶ ${__("commands.music.queue.nowPlaying")}\n[${np.song.title}](${np.song.url})\n${__mf("commands.music.queue.trackInfo", { duration: formatSongDuration(np), requester: np.requester.toString() })}`;
+
+                const songsArray = [...songs.values()];
+                const upcomingWithPos = songsArray
+                    .map((song, idx) => ({ song, pos: idx + 1 }))
+                    .filter(({ song }) => song.key !== np.key);
+                const pages = chunk(upcomingWithPos, 7).map((items, ind) => {
+                    const names = items.map(({ song, pos }) => {
+                        return `\`#${pos}\` **[${song.song.title}](${song.song.url})**\n${__mf("commands.music.queue.trackInfo", { duration: formatSongDuration(song), requester: song.requester.toString() })}`;
                     });
 
-                    return names.join("\n");
+                    if (ind === 0) {
+                        return `${nowPlayingLine}\n\n### ${__("commands.music.queue.upNext")}\n${names.join("\n\n")}`;
+                    }
+                    return names.join("\n\n");
                 });
+                if (pages.length === 0) {
+                    pages.push(nowPlayingLine);
+                }
+
+                const loopModeEmoji: Record<string, string> = {
+                    OFF: "▶️",
+                    SONG: "🔂",
+                    QUEUE: "🔁",
+                };
+                const loopEmoji = loopModeEmoji[queue.loopMode] ?? "▶️";
+                const shuffleState = queue.shuffle ? "ON" : "OFF";
 
                 let currentPage = 0;
-                const embed = createEmbed(
-                    "info",
-                    pages[0] ?? `📋 **|** ${__("requestChannel.emptyQueue")}`,
-                )
+                const embed = createEmbed("info", pages[0])
                     .setTitle(`📋 ${__("requestChannel.queueListTitle")}`)
-                    .setThumbnail(guild.iconURL({ extension: "png", size: 1_024 }) ?? null)
+                    .setThumbnail(
+                        (np.song.thumbnail?.length ?? 0) > 0
+                            ? np.song.thumbnail
+                            : (guild.iconURL({ extension: "png", size: 1_024 }) ?? null),
+                    )
+                    .addFields([
+                        {
+                            name: __("requestChannel.status"),
+                            value: `${loopEmoji} ${queue.loopMode}`,
+                            inline: true,
+                        },
+                        {
+                            name: __("requestChannel.shuffle"),
+                            value: `🔀 ${shuffleState}`,
+                            inline: true,
+                        },
+                        {
+                            name: __("requestChannel.volume"),
+                            value: `🔊 ${queue.volume}%`,
+                            inline: true,
+                        },
+                    ])
                     .setFooter({
-                        text: `• ${__mf("reusable.pageFooter", {
+                        text: `• ${__mf("commands.music.queue.queueStats", {
+                            count: totalSongs,
+                            duration: formatDuration(totalDuration),
+                        })} • ${__mf("reusable.pageFooter", {
                             actual: 1,
-                            total: pages.length || 1,
+                            total: pages.length,
                         })}`,
                     });
 
@@ -1315,7 +1362,10 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
                         currentPage = ((currentPage % pages.length) + pages.length) % pages.length;
 
                         embed.setDescription(pages[currentPage]).setFooter({
-                            text: `• ${__mf("reusable.pageFooter", {
+                            text: `• ${__mf("commands.music.queue.queueStats", {
+                                count: totalSongs,
+                                duration: formatDuration(totalDuration),
+                            })} • ${__mf("reusable.pageFooter", {
                                 actual: currentPage + 1,
                                 total: pages.length,
                             })}`,

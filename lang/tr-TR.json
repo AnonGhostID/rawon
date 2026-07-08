@@ -249,6 +249,10 @@
                 "description": "Kuyruk listesini göster",
                 "clearDescription": "Kuyruktaki tüm şarkıları temizle",
                 "queueCleared": "Kuyruk temizlendi. Mevcut şarkı çalmaya devam ediyor.",
+                "nowPlaying": "ŞU AN ÇALIYOR",
+                "upNext": "SIRADAKİ",
+                "trackInfo": "`{duration}` | İsteyen: {requester}",
+                "queueStats": "{count} şarkı | {duration}",
                 "slashClear": "Kuyruktaki tüm şarkıları temizle",
                 "usage": "{prefix}queue [clear]"
             },

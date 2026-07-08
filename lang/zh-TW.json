@@ -249,6 +249,10 @@
                 "description": "顯示隊列列表",
                 "clearDescription": "清空佇列中的所有歌曲",
                 "queueCleared": "佇列已清空。目前歌曲繼續播放。",
+                "nowPlaying": "正在播放",
+                "upNext": "即將播放",
+                "trackInfo": "`{duration}` | 由 {requester} 點歌",
+                "queueStats": "{count} 首歌 | {duration}",
                 "slashClear": "清空佇列中的所有歌曲",
                 "usage": "{prefix}queue [clear]"
             },

@@ -249,6 +249,10 @@
                 "description": "Afficher la liste de la file d'attente",
                 "clearDescription": "Supprimer toutes les chansons de la file d'attente",
                 "queueCleared": "File d'attente effacée. La chanson en cours continue de jouer.",
+                "nowPlaying": "EN LECTURE",
+                "upNext": "À SUIVRE",
+                "trackInfo": "`{duration}` | Demandée par {requester}",
+                "queueStats": "{count} morceaux | {duration}",
                 "slashClear": "Supprimer toutes les chansons de la file d'attente",
                 "usage": "{prefix}queue [clear]"
             },

@@ -249,6 +249,10 @@
                 "description": "キューリストを表示",
                 "clearDescription": "キュー内のすべての曲をクリアします",
                 "queueCleared": "キューをクリアしました。現在の曲は再生を続けます。",
+                "nowPlaying": "再生中",
+                "upNext": "次の曲",
+                "trackInfo": "`{duration}` | リクエスト: {requester}",
+                "queueStats": "{count}曲 | {duration}",
                 "slashClear": "キュー内のすべての曲をクリアします",
                 "usage": "{prefix}queue [clear]"
             },

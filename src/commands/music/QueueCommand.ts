@@ -11,6 +11,7 @@ import { haveQueue } from "../../utils/decorators/MusicUtil.js";
 import { chunk } from "../../utils/functions/chunk.js";
 import { createEmbed } from "../../utils/functions/createEmbed.js";
 import { i18n__, i18n__mf } from "../../utils/functions/i18n.js";
+import { formatDuration, normalizeTime } from "../../utils/functions/normalizeTime.js";
 import { ButtonPagination } from "../../utils/structures/ButtonPagination.js";
 import { type SongManager } from "../../utils/structures/SongManager.js";
 
@@ -102,30 +103,87 @@ export class QueueCommand extends ContextCommand {
             ctx.guild?.queue?.loopMode === "QUEUE"
                 ? full
                 : full.filter((val) => val.index >= np.index);
-        const pages = chunk([...songs.values()], 10).map((sngs, ind) => {
-            const names = sngs.map((song, i) => {
-                const npKey = np.key;
-                const addition = song.key === npKey ? "**" : "";
+        const queue = ctx.guild?.queue;
+        const totalDuration = [...songs.values()].reduce(
+            (acc, s) => acc + (s.song.isLive ? 0 : s.song.duration),
+            0,
+        );
+        const totalSongs = songs.size;
 
-                return `${addition}${ind * 10 + (i + 1)} - [${song.song.title}](${song.song.url})${addition}`;
+        const formatSongDuration = (song: QueueSong): string =>
+            song.song.isLive ? "LIVE" : normalizeTime(song.song.duration);
+
+        // Build now-playing line (always shown on page 1)
+        const nowPlayingLine = `### ▶ ${__("commands.music.queue.nowPlaying")}\n[${np.song.title}](${np.song.url})\n${__mf("commands.music.queue.trackInfo", { duration: formatSongDuration(np), requester: np.requester.toString() })}`;
+
+        // Upcoming songs with their actual position in the songs array (matches ?skipto numbering)
+        const songsArray = [...songs.values()];
+        const upcomingWithPos = songsArray
+            .map((song, idx) => ({ song, pos: idx + 1 }))
+            .filter(({ song }) => song.key !== np.key);
+        const pages = chunk(upcomingWithPos, 7).map((items, ind) => {
+            const names = items.map(({ song, pos }) => {
+                return `\`#${pos}\` **[${song.song.title}](${song.song.url})**\n${__mf("commands.music.queue.trackInfo", { duration: formatSongDuration(song), requester: song.requester.toString() })}`;
             });
 
-            return names.join("\n");
+            if (ind === 0) {
+                return `${nowPlayingLine}\n\n### ${__("commands.music.queue.upNext")}\n${names.join("\n\n")}`;
+            }
+            return names.join("\n\n");
         });
+        // Edge case: no upcoming songs — show only the now-playing section
+        if (pages.length === 0) {
+            pages.push(nowPlayingLine);
+        }
+
         const embed = createEmbed("info", pages[0])
             .setTitle(`📋 ${__("requestChannel.queueListTitle")}`)
-            .setThumbnail(ctx.guild?.iconURL({ extension: "png", size: 1_024 }) ?? null);
+            .setThumbnail(
+                (np.song.thumbnail?.length ?? 0) > 0
+                    ? np.song.thumbnail
+                    : (ctx.guild?.iconURL({ extension: "png", size: 1_024 }) ?? null),
+            );
         const msg = await ctx.reply({ embeds: [embed] });
+
+        const loopModeEmoji: Record<string, string> = {
+            OFF: "▶️",
+            SONG: "🔂",
+            QUEUE: "🔁",
+        };
+        const loopEmoji = loopModeEmoji[queue?.loopMode ?? "OFF"] ?? "▶️";
+        const shuffleState = queue?.shuffle ? "ON" : "OFF";
 
         return new ButtonPagination(msg, {
             author: ctx.author.id,
             edit: (i, emb, page) =>
-                emb.setDescription(page).setFooter({
-                    text: `• ${__mf("reusable.pageFooter", {
-                        actual: i + 1,
-                        total: pages.length,
-                    })}`,
-                }),
+                emb
+                    .setDescription(page)
+                    .setFooter({
+                        text: `• ${__mf("commands.music.queue.queueStats", {
+                            count: totalSongs,
+                            duration: formatDuration(totalDuration),
+                        })} • ${__mf("reusable.pageFooter", {
+                            actual: i + 1,
+                            total: pages.length,
+                        })}`,
+                    })
+                    .setFields([
+                        {
+                            name: __("requestChannel.status"),
+                            value: `${loopEmoji} ${queue?.loopMode ?? "OFF"}`,
+                            inline: true,
+                        },
+                        {
+                            name: __("requestChannel.shuffle"),
+                            value: `🔀 ${shuffleState}`,
+                            inline: true,
+                        },
+                        {
+                            name: __("requestChannel.volume"),
+                            value: `🔊 ${queue?.volume ?? 100}%`,
+                            inline: true,
+                        },
+                    ]),
             embed,
             pages,
         }).start();

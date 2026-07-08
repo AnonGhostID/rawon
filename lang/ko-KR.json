@@ -249,6 +249,10 @@
                 "description": "대기열 목록 보기",
                 "clearDescription": "대기열에서 모든 곡 삭제",
                 "queueCleared": "대기열이 비워졌습니다. 현재 곡이 계속 재생됩니다.",
+                "nowPlaying": "재생 중",
+                "upNext": "다음 곡",
+                "trackInfo": "`{duration}` | 신청자: {requester}",
+                "queueStats": "{count}곡 | {duration}",
                 "slashClear": "대기열에서 모든 곡 삭제",
                 "usage": "{prefix}queue [clear]"
             },

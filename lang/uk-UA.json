@@ -249,6 +249,10 @@
                 "description": "Показати чергу",
                 "clearDescription": "Очистити всі пісні з черги",
                 "queueCleared": "Чергу очищено. Поточна пісня продовжує грати.",
+                "nowPlaying": "ЗАРАЗ ГРАЄ",
+                "upNext": "ДАЛІ",
+                "trackInfo": "`{duration}` | Запросив(ла) {requester}",
+                "queueStats": "{count} треків | {duration}",
                 "slashClear": "Очистити всі пісні з черги",
                 "usage": "{prefix}queue [clear]"
             },

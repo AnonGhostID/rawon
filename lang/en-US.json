@@ -249,6 +249,10 @@
                 "description": "Show the queue list",
                 "clearDescription": "Clear all songs from the queue",
                 "queueCleared": "Queue cleared. Current song continues playing.",
+                "nowPlaying": "NOW PLAYING",
+                "upNext": "UP NEXT",
+                "trackInfo": "`{duration}` | Requested by {requester}",
+                "queueStats": "{count} tracks | {duration}",
                 "slashClear": "Clear all songs from the queue",
                 "usage": "{prefix}queue [clear]"
             },

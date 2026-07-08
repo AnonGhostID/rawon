@@ -249,6 +249,10 @@
                 "description": "Показать очередь",
                 "clearDescription": "Очистить все песни из очереди",
                 "queueCleared": "Очередь очищена. Текущая песня продолжает играть.",
+                "nowPlaying": "СЕЙЧАС ИГРАЕТ",
+                "upNext": "ДАЛЕЕ",
+                "trackInfo": "`{duration}` | Запросил(а) {requester}",
+                "queueStats": "{count} треков | {duration}",
                 "slashClear": "Очистить все песни из очереди",
                 "usage": "{prefix}queue [clear]"
             },
