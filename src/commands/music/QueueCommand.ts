@@ -30,9 +30,7 @@ import { type SongManager } from "../../utils/structures/SongManager.js";
     ): SlashCommandBuilder {
         return builder
             .setName(opts.name ?? "queue")
-            .setDescription(
-                opts.description ?? i18n.__("commands.music.queue.description"),
-            )
+            .setDescription(opts.description ?? i18n.__("commands.music.queue.description"))
             .addSubcommand((sub) =>
                 sub.setName("clear").setDescription(i18n.__("commands.music.queue.slashClear")),
             ) as SlashCommandBuilder;
@@ -52,18 +50,27 @@ export class QueueCommand extends ContextCommand {
         const selection = localCtx.options?.getSubcommand() ?? localCtx.args[0];
         if (selection?.toLowerCase() === "clear") {
             const queue = ctx.guild?.queue;
-            if (!queue) return;
+            if (!queue) {
+                return;
+            }
 
             // Inline VC guard — only for the clear path (NOT method-level decorators)
             const member = ctx.member as GuildMember | null;
-            if (!member?.voice.channel || member.voice.channel.id !== queue.connection?.joinConfig.channelId) {
-                await ctx.reply({ embeds: [createEmbed("warn", __("utils.musicDecorator.noInVC"))] });
+            if (
+                !member?.voice.channel ||
+                member.voice.channel.id !== queue.connection?.joinConfig.channelId
+            ) {
+                await ctx.reply({
+                    embeds: [createEmbed("warn", __("utils.musicDecorator.noInVC"))],
+                });
                 return;
             }
 
             // Guard: only clear when player is actively playing (Idle/Paused would lose current song key)
             if (queue.player.state.status !== AudioPlayerStatus.Playing) {
-                await ctx.reply({ embeds: [createEmbed("warn", __("utils.musicDecorator.notPlaying"))] });
+                await ctx.reply({
+                    embeds: [createEmbed("warn", __("utils.musicDecorator.notPlaying"))],
+                });
                 return;
             }
 
@@ -81,11 +88,12 @@ export class QueueCommand extends ContextCommand {
             void queue.saveState();
 
             await ctx.reply({
-                embeds: [createEmbed("success", `🧹 **|** ${__("commands.music.queue.queueCleared")}`)],
+                embeds: [
+                    createEmbed("success", `🧹 **|** ${__("commands.music.queue.queueCleared")}`),
+                ],
             });
             return;
         }
-
 
         const np = (ctx.guild?.queue?.player.state as AudioPlayerPlayingState).resource
             .metadata as QueueSong;

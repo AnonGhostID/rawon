@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import path from "node:path";
 import process from "node:process";
 import { type Command, container, SapphireClient } from "@sapphire/framework";

@@ -117,7 +117,8 @@ export function hasGetVoiceChannelStatusState(
         typeof v === "object" &&
         v !== null &&
         "getVoiceChannelStatusState" in v &&
-        typeof (v as { getVoiceChannelStatusState: unknown }).getVoiceChannelStatusState === "function"
+        typeof (v as { getVoiceChannelStatusState: unknown }).getVoiceChannelStatusState ===
+            "function"
     );
 }
 
@@ -128,18 +129,20 @@ export function hasGetVoiceChannelStatusStatesByChannel(
         typeof v === "object" &&
         v !== null &&
         "getVoiceChannelStatusStatesByChannel" in v &&
-        typeof (v as { getVoiceChannelStatusStatesByChannel: unknown }).getVoiceChannelStatusStatesByChannel === "function"
+        typeof (v as { getVoiceChannelStatusStatesByChannel: unknown })
+            .getVoiceChannelStatusStatesByChannel === "function"
     );
 }
 
-export function hasSaveVoiceChannelStatusState(
-    v: unknown,
-): v is { saveVoiceChannelStatusState(guildId: string, botId: string, state: unknown): Promise<void> } {
+export function hasSaveVoiceChannelStatusState(v: unknown): v is {
+    saveVoiceChannelStatusState(guildId: string, botId: string, state: unknown): Promise<void>;
+} {
     return (
         typeof v === "object" &&
         v !== null &&
         "saveVoiceChannelStatusState" in v &&
-        typeof (v as { saveVoiceChannelStatusState: unknown }).saveVoiceChannelStatusState === "function"
+        typeof (v as { saveVoiceChannelStatusState: unknown }).saveVoiceChannelStatusState ===
+            "function"
     );
 }
 
@@ -150,7 +153,8 @@ export function hasDeleteVoiceChannelStatusState(
         typeof v === "object" &&
         v !== null &&
         "deleteVoiceChannelStatusState" in v &&
-        typeof (v as { deleteVoiceChannelStatusState: unknown }).deleteVoiceChannelStatusState === "function"
+        typeof (v as { deleteVoiceChannelStatusState: unknown }).deleteVoiceChannelStatusState ===
+            "function"
     );
 }
 

@@ -7,7 +7,14 @@ import {
     createAudioPlayer,
     type VoiceConnection,
 } from "@discordjs/voice";
-import { ChannelType, Events, MessageFlags, type Snowflake, type StageChannel, type TextChannel, type VoiceChannel } from "discord.js";
+import {
+    ChannelType,
+    Events,
+    MessageFlags,
+    type Snowflake,
+    type TextChannel,
+    type VoiceChannel,
+} from "discord.js";
 import { useRemoteDb } from "../config/index.js";
 import { type LoopMode, type QueueSong, type SavedQueueSong, type Song } from "../typings/index.js";
 import { createEmbed } from "../utils/functions/createEmbed.js";
@@ -758,14 +765,20 @@ export class ServerQueue {
         }
 
         clearTimeout(this.timeout ?? undefined);
-        if (!preserveState) {
+        if (preserveState) {
+            this.client.logger.info(
+                `[ServerQueue] destroy(preserveState=true): skipping state clear for ${this.client.user?.tag} in guild ${this.textChannel.guild.name}`,
+            );
+        } else {
             await this.clearQueueState();
 
             if (this.client.config.isMultiBot) {
                 const botInstance = this.client.multiBotManager.getBotByClient(this.client);
                 if (botInstance && !botInstance.isPrimary) {
                     await this.clearPlayerState();
-                    await this.client.requestChannelManager.deletePlayerMessage(this.textChannel.guild);
+                    await this.client.requestChannelManager.deletePlayerMessage(
+                        this.textChannel.guild,
+                    );
                     this.client.logger.info(
                         `[MultiBot] ${this.client.user?.tag} (non-primary) cleared player state on destroy`,
                     );
@@ -775,10 +788,6 @@ export class ServerQueue {
                     );
                 }
             }
-        } else {
-            this.client.logger.info(
-                `[ServerQueue] destroy(preserveState=true): skipping state clear for ${this.client.user?.tag} in guild ${this.textChannel.guild.name}`,
-            );
         }
 
         delete this.textChannel.guild.queue;
@@ -1328,7 +1337,9 @@ export class ServerQueue {
         }
 
         const fallback = this.client.data as FallbackDataManager;
-        return (fallback.data?.[guildId]?.voiceChannelStatusState as VoiceChannelStatusState) ?? null;
+        return (
+            (fallback.data?.[guildId]?.voiceChannelStatusState as VoiceChannelStatusState) ?? null
+        );
     }
 
     private getSavedVoiceChannelStatusStatesByChannel(

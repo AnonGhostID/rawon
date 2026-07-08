@@ -16,6 +16,7 @@ import { type filterArgs } from "../utils/functions/ffmpegArgs.js";
 import { formatMS } from "../utils/functions/formatMS.js";
 import { play } from "../utils/handlers/GeneralUtil.js";
 import {
+    type FallbackDataManager,
     hasGetGuildIdsWithQueueState,
     hasGetPlayerState,
     hasGetQueueState,
@@ -118,10 +119,10 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
             ),
         );
 
-        await this.cleanupOrphanedGuildData();
+        await this.restoreQueueStates();
         await this.validateRequestChannels();
         await this.restoreRequestChannelMessages();
-        await this.restoreQueueStates();
+        await this.cleanupOrphanedGuildData();
 
         const isPrimaryForUpdater =
             !this.container.config.isMultiBot || client.multiBotManager.getPrimaryBot() === client;
@@ -139,7 +140,7 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
             return;
         }
 
-        if (!hasExtendedMethods(this.container.data)) {
+        if (!hasExtendedMethods(client.data)) {
             return;
         }
 
@@ -162,7 +163,10 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
                     );
                 }
 
-                await new Promise((resolve) => setTimeout(resolve, waitMs));
+                const { promise: delayPromise, resolve: resolveDelay } =
+                    Promise.withResolvers<void>();
+                setTimeout(resolveDelay, waitMs);
+                await delayPromise;
             }
 
             const stillNotReady = client.multiBotManager
@@ -175,9 +179,43 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
                 );
                 return;
             }
+
+            // Extra stabilization: GUILD_CREATE events keep arriving after isReady() flips.
+            // Wait for guild caches to stop growing before treating missing guilds as orphaned.
+            const dataManager = client.data;
+            const dbGuildIds = hasGetGuildIdsWithQueueState(dataManager)
+                ? (() => {
+                      const ids = new Set<string>();
+                      for (const bot of client.multiBotManager.getBots()) {
+                          const botId = bot.client.user?.id ?? "unknown";
+                          for (const gid of dataManager.getGuildIdsWithQueueState(botId)) {
+                              ids.add(gid);
+                          }
+                      }
+                      return ids;
+                  })()
+                : new Set<string>();
+
+            if (dbGuildIds.size > 0) {
+                let prevSize = -1;
+                for (let attempt = 1; attempt <= 6; attempt++) {
+                    const totalCached = client.multiBotManager
+                        .getBots()
+                        .reduce((sum, bot) => sum + bot.client.guilds.cache.size, 0);
+                    if (totalCached === prevSize) {
+                        break;
+                    }
+                    prevSize = totalCached;
+                    const { promise: stabilizePromise, resolve: resolveStabilize } =
+                        Promise.withResolvers<void>();
+                    setTimeout(resolveStabilize, 3_000);
+                    await stabilizePromise;
+                }
+                this.container.logger.info(`[Cleanup] Guild caches stabilized after ready signal`);
+            }
         }
 
-        const dataManager = this.container.data;
+        const dataManager = client.data;
         const dbGuildIds = dataManager.getAllGuildIds();
         const botGuildIds = new Set(client.guilds.cache.keys());
 
@@ -218,8 +256,37 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
                     }
                 }
 
+                // Safety guard: never delete a guild that still has saved queue/player state
+                // for any bot. Such state means a bot was recently playing there and the guild
+                // is only temporarily missing from cache (e.g. GUILD_CREATE not yet delivered
+                // after a restart). Deleting would cascade-wipe every bot's saved queue.
+                const hasSavedState =
+                    hasGetGuildIdsWithQueueState(dataManager) || hasGetQueueState(dataManager);
+                if (hasSavedState) {
+                    let anyState = false;
+                    const bots = this.container.config.isMultiBot
+                        ? client.multiBotManager.getBots()
+                        : [{ client }];
+                    for (const bot of bots) {
+                        const botId = bot.client.user?.id ?? "unknown";
+                        if (
+                            hasGetQueueState(dataManager) &&
+                            dataManager.getQueueState(dbGuildId, botId)
+                        ) {
+                            anyState = true;
+                            break;
+                        }
+                    }
+                    if (anyState) {
+                        this.container.logger.warn(
+                            `[Cleanup] Skipping guild ${dbGuildId}: has saved queue state (likely late GUILD_CREATE), not orphaned`,
+                        );
+                        continue;
+                    }
+                }
+
                 this.container.logger.info(
-                    `[Cleanup] Removing orphaned data for guild ${dbGuildId} - bot is no longer a member`,
+                    `[Cleanup] Removing orphaned data for guild ${dbGuildId} - no bot is a member`,
                 );
 
                 try {
@@ -245,7 +312,7 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
     private async validateRequestChannels(): Promise<void> {
         const client = this.currentClient;
         const botId = client.user?.id ?? "unknown";
-        const data = this.container.data.data;
+        const data = client.data.data;
         if (!data) {
             return;
         }
@@ -259,8 +326,8 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
             let requestChannelData: { channelId: string | null; messageId: string | null } | null =
                 null;
 
-            if (hasGetRequestChannel(this.container.data)) {
-                requestChannelData = this.container.data.getRequestChannel(guildId, botId);
+            if (hasGetRequestChannel(client.data)) {
+                requestChannelData = client.data.getRequestChannel(guildId, botId);
             } else {
                 requestChannelData = data[guildId]?.requestChannel ?? null;
             }
@@ -308,16 +375,14 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
             botId?: string;
         }> = [];
 
-        if (hasGetQueueState(this.container.data)) {
-            const guildIdsToCheck = hasGetGuildIdsWithQueueState(this.container.data)
-                ? this.container.data.getGuildIdsWithQueueState(botId)
-                : Object.keys(
-                      (this.container.data as import("../utils/typeGuards.js").FallbackDataManager)
-                          .data ?? {},
-                  );
+        const dataManager = client.data;
+        if (hasGetQueueState(dataManager)) {
+            const guildIdsToCheck = hasGetGuildIdsWithQueueState(dataManager)
+                ? dataManager.getGuildIdsWithQueueState(botId)
+                : Object.keys((dataManager as FallbackDataManager).data ?? {});
 
             for (const guildId of guildIdsToCheck) {
-                const queueState = this.container.data.getQueueState(guildId, botId);
+                const queueState = dataManager.getQueueState(guildId, botId);
                 if (queueState && queueState.songs.length > 0) {
                     queueStates.push({ guildId, queueState, botId });
                     this.container.logger.info(
@@ -326,8 +391,7 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
                 }
             }
         } else {
-            const fallback = this.container
-                .data as import("../utils/typeGuards.js").FallbackDataManager;
+            const fallback = dataManager as FallbackDataManager;
             const data = fallback.data;
             if (!data) {
                 return;
@@ -400,14 +464,11 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
                             `[Restore] ✅ Queue owner bot ID provided (${queueOwnerBotId}). Attempting to load player state from queue owner bot for guild ${guild.name} (restoringBotId=${botId})`,
                         );
 
-                        if (hasGetPlayerState(this.container.data)) {
+                        if (hasGetPlayerState(client.data)) {
                             this.container.logger.info(
                                 `[Restore] Calling getPlayerState(guildId=${guildId}, botId=${queueOwnerBotId})`,
                             );
-                            const savedState = this.container.data.getPlayerState(
-                                guildId,
-                                queueOwnerBotId,
-                            );
+                            const savedState = client.data.getPlayerState(guildId, queueOwnerBotId);
 
                             this.container.logger.info(
                                 `[Restore] getPlayerState result for guild ${guildId}, botId ${queueOwnerBotId}: ${savedState ? "✅ FOUND" : "❌ NOT FOUND"}`,
@@ -601,7 +662,7 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
 
     private async restoreRequestChannelMessages(): Promise<void> {
         const client = this.currentClient;
-        const data = this.container.data.data;
+        const data = client.data.data;
         if (!data) {
             return;
         }

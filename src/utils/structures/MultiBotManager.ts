@@ -285,7 +285,6 @@ export class MultiBotManager {
         return null;
     }
 
-
     public shouldRespond(client: Rawon, guild: Guild): boolean {
         if (!isMultiBot) {
             return true;

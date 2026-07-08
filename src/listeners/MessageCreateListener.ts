@@ -276,7 +276,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
         const shouldRespondToMention = mentionedBot && mentionedBot.id === client.user?.id;
 
         if (shouldRespondToMention) {
-            let prefixToShow = guildPrefix || client.mainPrefix;
+            const prefixToShow = guildPrefix || client.mainPrefix;
 
             await message
                 .reply({
@@ -390,10 +390,10 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                             thisBotGuild,
                             userVoiceChannelId,
                         );
-                    } else if (!isMentionPrefix) {
-                        shouldHandle = client.multiBotManager.shouldRespond(client, thisBotGuild);
-                    } else {
+                    } else if (isMentionPrefix) {
                         shouldHandle = true;
+                    } else {
+                        shouldHandle = client.multiBotManager.shouldRespond(client, thisBotGuild);
                     }
 
                     if (!shouldHandle) {
@@ -668,10 +668,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
         if (!activeBot) {
             return;
         }
-        const activePrefix = getEffectivePrefix(
-            activeBot.botInstance.client,
-            message.guild!.id,
-        );
+        const activePrefix = getEffectivePrefix(activeBot.botInstance.client, message.guild!.id);
         const channelName = activeBot.voiceChannelId
             ? `<#${activeBot.voiceChannelId}>`
             : "a voice channel";

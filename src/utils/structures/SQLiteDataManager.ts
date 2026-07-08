@@ -20,17 +20,20 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
     private readonly manager = new OperationManager();
     private _data: T | null = null;
     private _botQueueStates = new Map<string, Map<string, NonNullable<GuildData["queueState"]>>>();
-    private _botPlayerStates = new Map<string, Map<string, NonNullable<GuildData["playerState"]>>>();
-    private _botRequestChannels = new Map<string, Map<string, NonNullable<GuildData["requestChannel"]>>>()
+    private _botPlayerStates = new Map<
+        string,
+        Map<string, NonNullable<GuildData["playerState"]>>
+    >();
+    private _botRequestChannels = new Map<
+        string,
+        Map<string, NonNullable<GuildData["requestChannel"]>>
+    >();
 
     public constructor(public readonly dbPath: string) {
         this.ensureDirectory();
         this.db = createBackend(this.dbPath);
     }
-    private ensureBotMap<K>(
-        map: Map<string, Map<string, K>>,
-        guildId: string,
-    ): Map<string, K> {
+    private ensureBotMap<K>(map: Map<string, Map<string, K>>, guildId: string): Map<string, K> {
         let inner = map.get(guildId);
         if (!inner) {
             inner = new Map();
@@ -261,7 +264,6 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                     });
                 }
 
-
                 this._data = data as T;
             });
 
@@ -483,7 +485,10 @@ export class SQLiteDataManager<T extends Record<string, GuildData> = Record<stri
                 messageId,
             );
 
-            this.ensureBotMap(this._botRequestChannels, guildId).set(botId, { channelId, messageId });
+            this.ensureBotMap(this._botRequestChannels, guildId).set(botId, {
+                channelId,
+                messageId,
+            });
         });
     }
 
