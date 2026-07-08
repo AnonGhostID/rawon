@@ -669,7 +669,10 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
             return;
         }
         const __mf = i18n__mf(client, message.guild);
-        const activePrefix = getEffectivePrefix(activeBot.botInstance.client, message.guild!.id);
+        const idleBot = client.multiBotManager
+            .getBotsInGuild(message.guild!)
+            .find((b) => b.botId !== activeBot.botInstance.botId);
+        const redirectPrefix = getEffectivePrefix(idleBot?.client ?? client, message.guild!.id);
         const channelName = activeBot.voiceChannelId
             ? `<#${activeBot.voiceChannelId}>`
             : __mf("events.voiceChannelFallback", {});
@@ -680,7 +683,7 @@ export class MessageCreateListener extends Listener<typeof Events.MessageCreate>
                 __mf("events.botRedirect", {
                     botTag: activeBot.botInstance.client.user?.tag ?? "",
                     channel: channelName,
-                    command: formatBoldCodeSpan(`${activePrefix}${cmdName}`),
+                    command: formatBoldCodeSpan(`${redirectPrefix}${cmdName}`),
                 }),
             ),
         );

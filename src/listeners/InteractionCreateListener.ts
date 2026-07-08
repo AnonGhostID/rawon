@@ -1234,8 +1234,15 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
 
                 const formatSongDuration = (song: QueueSong): string =>
                     song.song.isLive ? "LIVE" : normalizeTime(song.song.duration);
+                const formatTrackInfo = (song: QueueSong): string =>
+                    song.requester.user.bot
+                        ? `\`${formatSongDuration(song)}\` | 🎵 Mode Autoplay`
+                        : __mf("commands.music.queue.trackInfo", {
+                              duration: formatSongDuration(song),
+                              requester: song.requester.toString(),
+                          });
 
-                const nowPlayingLine = `### ▶ ${__("commands.music.queue.nowPlaying")}\n[${np.song.title}](${np.song.url})\n${__mf("commands.music.queue.trackInfo", { duration: formatSongDuration(np), requester: np.requester.toString() })}`;
+                const nowPlayingLine = `### ▶ ${__("commands.music.queue.nowPlaying")}\n[${np.song.title}](${np.song.url})\n${formatTrackInfo(np)}`;
 
                 const songsArray = [...songs.values()];
                 const upcomingWithPos = songsArray
@@ -1243,7 +1250,7 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
                     .filter(({ song }) => song.key !== np.key);
                 const pages = chunk(upcomingWithPos, 7).map((items, ind) => {
                     const names = items.map(({ song, pos }) => {
-                        return `\`#${pos}\` **[${song.song.title}](${song.song.url})**\n${__mf("commands.music.queue.trackInfo", { duration: formatSongDuration(song), requester: song.requester.toString() })}`;
+                        return `\`#${pos}\` **[${song.song.title}](${song.song.url})**\n${formatTrackInfo(song)}`;
                     });
 
                     if (ind === 0) {
