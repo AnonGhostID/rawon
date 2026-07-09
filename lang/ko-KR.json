@@ -115,7 +115,8 @@
                 "osUptimeString": "OS 가동 시간",
                 "processUptimeString": "프로세스 가동 시간",
                 "serversString": "서버",
-                "sourceCodeString": "소스 코드"
+                "sourceCodeString": "소스 코드",
+                "sourceCodeFork": "포크 소스 코드"
             },
             "help": {
                 "aliasesString": "별칭",

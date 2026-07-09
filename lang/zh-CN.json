@@ -115,7 +115,8 @@
                 "osUptimeString": "OS 上线时间",
                 "processUptimeString": "Process 上线时间",
                 "serversString": "伺服器",
-                "sourceCodeString": "源代码"
+                "sourceCodeString": "源代码",
+                "sourceCodeFork": "Fork 源代码"
             },
             "help": {
                 "aliasesString": "化名",

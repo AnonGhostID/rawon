@@ -115,7 +115,8 @@
                 "osUptimeString": "OSのアップタイム",
                 "processUptimeString": "プロセスのアップタイム",
                 "serversString": "サーバー",
-                "sourceCodeString": "ソースコード"
+                "sourceCodeString": "ソースコード",
+                "sourceCodeFork": "フォーク ソースコード"
             },
             "help": {
                 "aliasesString": "エイリアス",

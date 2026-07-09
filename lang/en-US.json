@@ -115,7 +115,8 @@
                 "osUptimeString": "OS Uptime",
                 "processUptimeString": "Process Uptime",
                 "serversString": "Servers",
-                "sourceCodeString": "Source code"
+                "sourceCodeString": "Source code",
+                "sourceCodeFork": "Fork Source code"
             },
             "help": {
                 "aliasesString": "Aliases",

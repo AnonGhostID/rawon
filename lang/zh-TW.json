@@ -115,7 +115,8 @@
                 "osUptimeString": "OS 上線時間",
                 "processUptimeString": "Process 上線時間",
                 "serversString": "伺服器",
-                "sourceCodeString": "源代碼"
+                "sourceCodeString": "源代碼",
+                "sourceCodeFork": "Fork 源代碼"
             },
             "help": {
                 "aliasesString": "化名",

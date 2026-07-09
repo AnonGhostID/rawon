@@ -115,7 +115,8 @@
                 "osUptimeString": "Thời gian hoạt động của hđh",
                 "processUptimeString": "Thời gian hoạt động thực",
                 "serversString": "Máy chủ",
-                "sourceCodeString": "Mã nguồn"
+                "sourceCodeString": "Mã nguồn",
+                "sourceCodeFork": "Fork Mã nguồn"
             },
             "help": {
                 "aliasesString": "Các bí danh",

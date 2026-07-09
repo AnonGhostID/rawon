@@ -115,7 +115,8 @@
                 "osUptimeString": "Uptime OS",
                 "processUptimeString": "Uptime Process",
                 "serversString": "Server",
-                "sourceCodeString": "Kode sumber"
+                "sourceCodeString": "Kode sumber",
+                "sourceCodeFork": "Upstream Fork"
             },
             "help": {
                 "aliasesString": "Alias",

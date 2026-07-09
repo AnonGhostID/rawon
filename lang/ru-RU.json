@@ -115,7 +115,8 @@
                 "osUptimeString": "Время работы ОС",
                 "processUptimeString": "Время работы процесса",
                 "serversString": "Сервера",
-                "sourceCodeString": "Исходный код"
+                "sourceCodeString": "Исходный код",
+                "sourceCodeFork": "Форк Исходный код"
             },
             "help": {
                 "aliasesString": "Псевдонимы",

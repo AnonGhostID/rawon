@@ -115,7 +115,8 @@
                 "osUptimeString": "Tempo de atividade do SO",
                 "processUptimeString": "Tempo de atividade do processo",
                 "serversString": "Servidores",
-                "sourceCodeString": "Código-fonte"
+                "sourceCodeString": "Código-fonte",
+                "sourceCodeFork": "Fork Código-fonte"
             },
             "help": {
                 "aliasesString": "Alias",

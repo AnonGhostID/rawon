@@ -115,7 +115,8 @@
                 "osUptimeString": "OS Çalışma Süresi",
                 "processUptimeString": "Servis Çalışma Süresi",
                 "serversString": "Sunucular",
-                "sourceCodeString": "Kaynak Kodu"
+                "sourceCodeString": "Kaynak Kodu",
+                "sourceCodeFork": "Fork Kaynak Kodu"
             },
             "help": {
                 "aliasesString": "Diğer Kullanımlar",
