@@ -134,6 +134,24 @@ export async function play(
         );
 
         if (streamResult.cachePath) {
+            // Validate cache file is not empty before passing to FFmpeg
+            try {
+                const stat = await fsp.stat(streamResult.cachePath);
+                if (stat.size === 0) {
+                    queue.client.logger.warn(
+                        `[PLAY_HANDLER] Cache file is empty (${streamResult.cachePath}), falling back to stream`,
+                    );
+                    streamResult.cachePath = null;
+                }
+            } catch {
+                queue.client.logger.warn(
+                    `[PLAY_HANDLER] Cache file missing (${streamResult.cachePath}), falling back to stream`,
+                );
+                streamResult.cachePath = null;
+            }
+        }
+
+        if (streamResult.cachePath) {
             const args = ffmpegArgs(queue.filters, seekSeconds, streamResult.cachePath);
             queue.client.logger.debug("[PLAY_HANDLER][FFMPEG_ARGS]", args.join(" "));
             ffmpegStream = new prism.FFmpeg({

@@ -96,6 +96,13 @@ export class QueueCommand extends ContextCommand {
             return;
         }
 
+        if (ctx.guild?.queue?.player.state.status !== AudioPlayerStatus.Playing) {
+            await ctx.reply({
+                embeds: [createEmbed("warn", __("utils.musicDecorator.notPlaying"))],
+            });
+            return;
+        }
+
         const np = (ctx.guild?.queue?.player.state as AudioPlayerPlayingState).resource
             .metadata as QueueSong;
         const full = ctx.guild?.queue?.songs.sortByIndex() as SongManager;

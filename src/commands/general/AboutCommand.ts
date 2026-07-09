@@ -65,7 +65,7 @@ export class AboutCommand extends ContextCommand {
             [__("commands.general.about.botVersionString"), pkg.version],
             [__("commands.general.about.commitString"), client.utils.getCommitHash("HEAD")],
             [""],
-            [__("commands.general.about.sourceCodeString"), "https://github.com/stegripe/rawon"],
+            [__("commands.general.about.sourceCodeString"), "https://github.com/AnonGhostID/rawon"],
         ];
         const value = createTable(values);
 

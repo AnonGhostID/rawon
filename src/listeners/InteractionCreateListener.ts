@@ -1,5 +1,5 @@
 import { setTimeout } from "node:timers";
-import { type AudioPlayerPlayingState } from "@discordjs/voice";
+import { type AudioPlayerPlayingState, AudioPlayerStatus } from "@discordjs/voice";
 import { ApplyOptions } from "@sapphire/decorators";
 import { type Command, Events, Listener, type ListenerOptions } from "@sapphire/framework";
 import {
@@ -1218,6 +1218,13 @@ export class InteractionCreateListener extends Listener<typeof Events.Interactio
                     await interaction.reply({
                         flags: MessageFlags.Ephemeral,
                         embeds: [createEmbed("warn", __("requestChannel.nothingPlaying"))],
+                    });
+                    return;
+                }
+                if (queue.player.state.status !== AudioPlayerStatus.Playing) {
+                    await interaction.reply({
+                        flags: MessageFlags.Ephemeral,
+                        embeds: [createEmbed("warn", __("utils.musicDecorator.notPlaying"))],
                     });
                     return;
                 }

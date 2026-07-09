@@ -1,4 +1,4 @@
-import { type AudioPlayerPlayingState } from "@discordjs/voice";
+import { type AudioPlayerPlayingState, AudioPlayerStatus } from "@discordjs/voice";
 import { ApplyOptions } from "@sapphire/decorators";
 import { type Command } from "@sapphire/framework";
 import { type CommandContext, ContextCommand } from "@stegripe/command-context";
@@ -58,6 +58,12 @@ export class SkipCommand extends ContextCommand {
         if (!queue.canSkip()) {
             await ctx.reply({
                 embeds: [createEmbed("warn", __("requestChannel.skipInProgress"))],
+            });
+            return;
+        }
+        if (queue.player.state.status !== AudioPlayerStatus.Playing) {
+            await ctx.reply({
+                embeds: [createEmbed("warn", __("utils.musicDecorator.notPlaying"))],
             });
             return;
         }
