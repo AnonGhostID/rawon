@@ -1,5 +1,5 @@
 import { type Buffer } from "node:buffer";
-import { type Readable } from "node:stream";
+import { PassThrough, type Readable } from "node:stream";
 import { clearTimeout, setTimeout } from "node:timers";
 import got from "got";
 import { type Rawon } from "../../structures/Rawon.js";
@@ -288,6 +288,38 @@ async function attemptStreamWithRetry(
         let hasHandledError = false;
         let hasResolved = false;
         let validationTimeout: NodeJS.Timeout | null = null;
+        const outputStream = new PassThrough();
+
+        proc.stdout.pipe(outputStream, { end: false });
+        outputStream.once("close", () => {
+            if (proc.exitCode === null && !proc.killed) {
+                proc.kill("SIGKILL");
+            }
+        });
+
+        const exposeStream = (): void => {
+            if (hasResolved || hasHandledError) {
+                return;
+            }
+
+            hasResolved = true;
+            if (isLive || !enableAudioCache || seekSeconds > 0) {
+                resolve(outputStream);
+                return;
+            }
+
+            resolve(client.audioCache.cacheStream(url, outputStream));
+        };
+
+        const failStream = (error: Error): void => {
+            if (hasResolved) {
+                outputStream.destroy(error);
+                return;
+            }
+
+            outputStream.destroy();
+            reject(error);
+        };
 
         const handleBotDetectionError = (): void => {
             if (hasHandledError) {
@@ -307,7 +339,7 @@ async function attemptStreamWithRetry(
 
             client.cookies.handleBotDetection();
 
-            reject(new AllCookiesFailedError());
+            failStream(new AllCookiesFailedError());
         };
 
         const handleTransientError = (errorMessage: string): void => {
@@ -322,6 +354,13 @@ async function attemptStreamWithRetry(
                     validationTimeout = null;
                 }
                 proc.kill("SIGKILL");
+
+                if (hasResolved) {
+                    failStream(new Error(`Transient stream error: ${errorMessage}`));
+                    return;
+                }
+
+                outputStream.destroy();
 
                 if (retryCount < MAX_TRANSIENT_RETRIES) {
                     client.logger.debug(
@@ -354,7 +393,7 @@ async function attemptStreamWithRetry(
                 } else if (isAgeRestrictedError(stderrData) && !hasHandledError) {
                     hasHandledError = true;
                     proc.kill("SIGKILL");
-                    reject(new AgeRestrictedError(url));
+                    failStream(new AgeRestrictedError(url));
                 } else {
                     handleTransientError(stderrData);
                 }
@@ -369,7 +408,7 @@ async function attemptStreamWithRetry(
             }
             if (!hasHandledError) {
                 hasHandledError = true;
-                reject(err);
+                failStream(err);
             }
         });
 
@@ -381,11 +420,21 @@ async function attemptStreamWithRetry(
             }
             if (!hasHandledError) {
                 hasHandledError = true;
-                reject(err);
+                failStream(err);
             }
         });
 
         proc.once("close", (code) => {
+            if (hasResolved) {
+                if (!hasHandledError && code === 0) {
+                    outputStream.end();
+                } else if (!outputStream.destroyed) {
+                    const errorMsg = stderrData.trim() || `Process exited with code ${code}`;
+                    failStream(new Error(`yt-dlp process exited with code ${code}: ${errorMsg}`));
+                }
+                return;
+            }
+
             if (!hasResolved && !hasHandledError) {
                 if (validationTimeout) {
                     clearTimeout(validationTimeout);
@@ -396,9 +445,13 @@ async function attemptStreamWithRetry(
                     handleBotDetectionError();
                 } else if (isAgeRestrictedError(stderrData)) {
                     hasHandledError = true;
-                    reject(new AgeRestrictedError(url));
-                } else if (code !== 0) {
+                    failStream(new AgeRestrictedError(url));
+                } else if (code === 0) {
+                    exposeStream();
+                    outputStream.end();
+                } else {
                     hasHandledError = true;
+                    outputStream.destroy();
                     const errorMsg = stderrData.trim() || `Process exited with code ${code}`;
                     if (isTransientError(errorMsg) && retryCount < MAX_TRANSIENT_RETRIES) {
                         const backoffDelay = Math.min(1000 * 2 ** retryCount, MAX_BACKOFF_DELAY_MS);
@@ -421,12 +474,6 @@ async function attemptStreamWithRetry(
             }
         });
 
-        if (!isLive) {
-            proc.stdout.once("end", () => {
-                proc.kill("SIGKILL");
-            });
-        }
-
         void proc.once("spawn", () => {
             if (hasHandledError) {
                 return;
@@ -446,22 +493,11 @@ async function attemptStreamWithRetry(
 
                 if (isAgeRestrictedError(stderrData)) {
                     hasHandledError = true;
-                    reject(new AgeRestrictedError(url));
+                    failStream(new AgeRestrictedError(url));
                     return;
                 }
 
-                hasResolved = true;
-
-                if (isLive || !enableAudioCache || seekSeconds > 0) {
-                    resolve(proc.stdout as Readable);
-                    return;
-                }
-
-                const passthroughStream = client.audioCache.cacheStream(
-                    url,
-                    proc.stdout as Readable,
-                );
-                resolve(passthroughStream);
+                exposeStream();
             }, STREAM_VALIDATION_DELAY_MS);
         });
     });

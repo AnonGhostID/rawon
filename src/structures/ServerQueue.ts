@@ -81,6 +81,8 @@ export class ServerQueue {
     private _skipCooldownMs = 2000;
     private _positionSaveInterval: NodeJS.Timeout | null = null;
     private _suppressPlayerErrors = false;
+    private _playbackStreamFailure: { error: Error; at: number } | null = null;
+    private readonly _prematureEndRetries = new Map<Snowflake, number>();
     private _pendingCacheUrls: string[] = [];
     private _shuffleUpcomingKeys: Snowflake[] = [];
     private _prefetchedAutoplaySongs: { fromSongKey: Snowflake; songs: Song[] } | null = null;
@@ -103,6 +105,8 @@ export class ServerQueue {
             _skipCooldownMs: nonEnum,
             _positionSaveInterval: nonEnum,
             _suppressPlayerErrors: nonEnum,
+            _playbackStreamFailure: nonEnum,
+            _prematureEndRetries: nonEnum,
             _prefetchedAutoplaySongs: nonEnum,
             _autoplayPrefetchPromise: nonEnum,
             _autoplayPrefetchForKey: nonEnum,
@@ -155,25 +159,73 @@ export class ServerQueue {
                 } else if (newState.status === AudioPlayerStatus.Idle) {
                     this.stopPositionSaveInterval();
 
-                    const song = (oldState as AudioPlayerPlayingState).resource
-                        .metadata as QueueSong;
+                    const previousResource = "resource" in oldState ? oldState.resource : null;
+                    const song = previousResource?.metadata as QueueSong | undefined;
+                    if (!song) {
+                        this.client.logger.warn(
+                            `[ServerQueue] Entered Idle without previous track metadata in ${this.textChannel.guild.name}`,
+                        );
+                        return;
+                    }
+
+                    const playbackMs = previousResource?.playbackDuration ?? 0;
+                    const playbackPosition = Math.floor(playbackMs / 1000) + this.seekOffset;
+                    const rawExpectedDuration = song.song.duration ?? 0;
+                    const expectedDuration =
+                        checkQuery(song.song.url).sourceType === "soundcloud" &&
+                        rawExpectedDuration > 10_000
+                            ? Math.floor(rawExpectedDuration / 1000)
+                            : rawExpectedDuration;
+                    const recentStreamFailure =
+                        this._playbackStreamFailure &&
+                        Date.now() - this._playbackStreamFailure.at < 10_000
+                            ? this._playbackStreamFailure.error
+                            : null;
+                    this._playbackStreamFailure = null;
+
+                    const hasMeaningfulRemaining =
+                        expectedDuration <= 0 || playbackPosition + 20 < expectedDuration;
+                    const durationLooksPremature =
+                        expectedDuration > 30 &&
+                        hasMeaningfulRemaining &&
+                        playbackPosition < expectedDuration * 0.7;
+                    const prematureEnd =
+                        !this.skipInProgress &&
+                        hasMeaningfulRemaining &&
+                        (recentStreamFailure !== null || durationLooksPremature);
+
+                    if (prematureEnd) {
+                        const retryCount = this._prematureEndRetries.get(song.key) ?? 0;
+                        if (retryCount < 2) {
+                            this._prematureEndRetries.set(song.key, retryCount + 1);
+                            this.client.logger.warn(
+                                `[ServerQueue] Premature end for "${song.song.title}" after ${playbackPosition}s/${expectedDuration || "unknown"}s; retrying (${retryCount + 1}/2).${recentStreamFailure ? ` Error: ${recentStreamFailure.message}` : ""}`,
+                            );
+                            this.client.audioCache.clearCacheForUrls([song.song.url]);
+                            void play(this.textChannel.guild, song.key, true, 0);
+                            return;
+                        }
+
+                        this.client.logger.error(
+                            `[ServerQueue] Premature end retry limit reached for "${song.song.title}"; advancing queue.`,
+                        );
+                    }
+
+                    this._prematureEndRetries.delete(song.key);
                     this.client.logger.info(
                         `${this.client.shard ? `[Shard #${this.client.shard.ids[0]}]` : ""} Track: "${
                             song.song.title
                         }" on ${this.textChannel.guild.name} has ended.`,
                     );
-                    try {
-                        const playingResource = (this.player.state as AudioPlayerPlayingState | any)
-                            .resource as AudioResource | undefined;
-                        const playbackMs = playingResource?.playbackDuration ?? null;
-                        this.client.logger.debug(
-                            "[ServerQueue] IdleHandler - previous resource playbackDurationMs",
-                            {
-                                guild: this.textChannel.guild.id,
-                                playbackDurationMs: playbackMs,
-                            },
-                        );
-                    } catch {}
+                    this.client.logger.debug(
+                        "[ServerQueue] IdleHandler - previous resource playback",
+                        {
+                            guild: this.textChannel.guild.id,
+                            playbackDurationMs: playbackMs,
+                            playbackPosition,
+                            expectedDuration,
+                        },
+                    );
                     try {
                         const upcoming = this.songs.sortByIndex().map((s) => s.key);
                         this.client.logger.debug("[ServerQueue] IdleHandler - queueState", {
@@ -344,6 +396,8 @@ export class ServerQueue {
                     this.client.logger.debug("Playback aborted:", (err as Error).message);
                     return;
                 }
+
+                this.markPlaybackStreamFailed(err as Error);
 
                 (async () => {
                     const isRequestChannel = this.client.requestChannelManager.isRequestChannel(
@@ -1307,6 +1361,10 @@ export class ServerQueue {
 
     public endSkip(): void {
         this._skipInProgress = false;
+    }
+
+    public markPlaybackStreamFailed(error: Error): void {
+        this._playbackStreamFailure = { error, at: Date.now() };
     }
 
     private getConnectedVoiceChannel(): VoiceChannel | null {

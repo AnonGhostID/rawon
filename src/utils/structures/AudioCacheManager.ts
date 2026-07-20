@@ -7,6 +7,7 @@ import {
     existsSync,
     mkdirSync,
     type ReadStream,
+    renameSync,
     rmSync,
     statSync,
 } from "node:fs";
@@ -46,13 +47,25 @@ function isSoundcloudUrl(url: string): boolean {
 
 export class AudioCacheManager {
     public readonly cacheDir: string;
-    private readonly cachedFiles = new Map<string, { path: string; lastAccess: number }>();
-    private readonly inProgressFiles = new Set<string>();
-    private readonly canceledCacheKeys = new Set<string>();
-    private readonly inProgressProcs = new Map<
+    private static readonly sharedCachedFiles = new Map<
         string,
-        { proc?: ChildProcess; stream?: Readable; writeStreamPath?: string }
+        { path: string; lastAccess: number }
     >();
+    private static readonly sharedInProgressFiles = new Set<string>();
+    private static readonly sharedCanceledCacheKeys = new Set<string>();
+    private static readonly sharedInProgressProcs = new Map<
+        string,
+        {
+            owner: AudioCacheManager;
+            proc?: ChildProcess;
+            stream?: Readable;
+            writeStreamPath?: string;
+        }
+    >();
+    private readonly cachedFiles = AudioCacheManager.sharedCachedFiles;
+    private readonly inProgressFiles = AudioCacheManager.sharedInProgressFiles;
+    private readonly canceledCacheKeys = AudioCacheManager.sharedCanceledCacheKeys;
+    private readonly inProgressProcs = AudioCacheManager.sharedInProgressProcs;
     private readonly failedUrls = new Map<string, { count: number; lastAttempt: number }>();
     private readonly preCacheQueue: string[] = [];
     private isProcessingQueue = false;
@@ -100,6 +113,19 @@ export class AudioCacheManager {
     public getCachePath(url: string): string {
         const key = this.getCacheKey(url);
         return path.join(this.cacheDir, `${key}.opus`);
+    }
+
+    private getPartialCachePath(url: string): string {
+        return `${this.getCachePath(url)}.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.part`;
+    }
+
+    private releaseInProgress(key: string): void {
+        if (this.inProgressProcs.get(key)?.owner !== this) {
+            return;
+        }
+
+        this.inProgressProcs.delete(key);
+        this.inProgressFiles.delete(key);
     }
 
     public isCached(url: string): boolean {
@@ -168,15 +194,25 @@ export class AudioCacheManager {
 
     public cacheStream(url: string, sourceStream: Readable): Readable {
         const cachePath = this.getCachePath(url);
+        const partialCachePath = this.getPartialCachePath(url);
         const key = this.getCacheKey(url);
+
+        if (this.inProgressFiles.has(key)) {
+            return sourceStream;
+        }
 
         this.inProgressFiles.add(key);
 
-        this.inProgressProcs.set(key, { stream: sourceStream, writeStreamPath: cachePath });
+        this.inProgressProcs.set(key, {
+            owner: this,
+            stream: sourceStream,
+            writeStreamPath: partialCachePath,
+        });
 
         const playbackStream = new PassThrough();
         const cacheStream = new PassThrough();
-        const writeStream = createWriteStream(cachePath);
+        const writeStream = createWriteStream(partialCachePath);
+        let cacheFailed = false;
 
         sourceStream.pipe(playbackStream);
         sourceStream.pipe(cacheStream);
@@ -184,42 +220,42 @@ export class AudioCacheManager {
         cacheStream.pipe(writeStream);
 
         writeStream.on("error", (error) => {
+            cacheFailed = true;
             this.client.logger.error("[AudioCacheManager] Error writing cache file:", error);
-            this.inProgressFiles.delete(key);
             this.cachedFiles.delete(key);
-            this.inProgressProcs.delete(key);
+            this.releaseInProgress(key);
             try {
-                rmSync(cachePath, { force: true });
+                rmSync(partialCachePath, { force: true });
             } catch {}
         });
 
         writeStream.on("finish", () => {
-            this.inProgressFiles.delete(key);
-            this.inProgressProcs.delete(key);
+            this.releaseInProgress(key);
 
-            if (this.canceledCacheKeys.has(key)) {
+            if (cacheFailed || this.canceledCacheKeys.has(key)) {
                 this.canceledCacheKeys.delete(key);
                 try {
-                    rmSync(cachePath, { force: true });
+                    rmSync(partialCachePath, { force: true });
                 } catch {}
                 return;
             }
 
             try {
-                const stats = statSync(cachePath);
+                const stats = statSync(partialCachePath);
                 if (stats.size < 1024) {
                     this.client.logger.warn(
                         `[AudioCacheManager] Cached file too small (${stats.size} bytes) for ${url.slice(0, 50)}..., discarding`,
                     );
-                    rmSync(cachePath, { force: true });
+                    rmSync(partialCachePath, { force: true });
                     return;
                 }
+                renameSync(partialCachePath, cachePath);
             } catch {
                 this.client.logger.warn(
                     `[AudioCacheManager] Could not stat cached file for ${url.slice(0, 50)}..., discarding`,
                 );
                 try {
-                    rmSync(cachePath, { force: true });
+                    rmSync(partialCachePath, { force: true });
                 } catch {}
                 return;
             }
@@ -234,13 +270,15 @@ export class AudioCacheManager {
         });
 
         sourceStream.on("error", (error) => {
+            cacheFailed = true;
             this.client.logger.error("[AudioCacheManager] Source stream error:", error);
             playbackStream.destroy(error);
-            this.inProgressFiles.delete(key);
+            cacheStream.destroy();
+            writeStream.destroy();
             this.cachedFiles.delete(key);
-            this.inProgressProcs.delete(key);
+            this.releaseInProgress(key);
             try {
-                rmSync(cachePath, { force: true });
+                rmSync(partialCachePath, { force: true });
             } catch {}
         });
 
@@ -374,77 +412,81 @@ export class AudioCacheManager {
 
     private async doPreCache(url: string, retryCount = 0): Promise<void> {
         const key = this.getCacheKey(url);
+        if (this.inProgressFiles.has(key)) {
+            return;
+        }
+
+        this.inProgressFiles.add(key);
+        this.inProgressProcs.set(key, { owner: this });
         this.canceledCacheKeys.delete(key);
+        let partialCachePath: string | null = null;
 
         try {
             const cachePath = this.getCachePath(url);
-
-            this.inProgressFiles.add(key);
+            partialCachePath = this.getPartialCachePath(url);
+            const workingCachePath = partialCachePath;
 
             if (await this.isDirectDownload(url)) {
-                const writeStream = createWriteStream(cachePath);
+                const writeStream = createWriteStream(workingCachePath);
                 const httpStream = got.stream(url);
+                let downloadFailed = false;
+                let writeFinished = false;
 
-                this.inProgressProcs.set(key, { stream: httpStream, writeStreamPath: cachePath });
+                this.inProgressProcs.set(key, {
+                    owner: this,
+                    stream: httpStream,
+                    writeStreamPath: workingCachePath,
+                });
 
                 httpStream.on("error", (err: Error) => {
+                    downloadFailed = true;
                     this.client.logger.warn(
                         `[AudioCacheManager] HTTP pre-cache stream error for ${url.slice(0, 50)}...: ${err.message}`,
                     );
-                    this.inProgressFiles.delete(key);
-                    this.inProgressProcs.delete(key);
-                    this.markFailed(key);
-                    try {
-                        rmSync(cachePath, { force: true });
-                    } catch {}
+                    writeStream.destroy();
                 });
 
                 httpStream.pipe(writeStream);
 
                 await new Promise<void>((resolve) => {
-                    writeStream.on("finish", () => {
-                        this.inProgressFiles.delete(key);
-                        this.inProgressProcs.delete(key);
-
-                        if (this.canceledCacheKeys.has(key)) {
-                            this.canceledCacheKeys.delete(key);
-                            try {
-                                rmSync(cachePath, { force: true });
-                            } catch {}
-                            resolve();
-                            return;
-                        }
-
-                        try {
-                            const stats = statSync(cachePath);
-                            if (stats.size >= 1024) {
-                                this.cachedFiles.set(key, {
-                                    path: cachePath,
-                                    lastAccess: Date.now(),
-                                });
-                                this.failedUrls.delete(key);
-                                this.client.logger.debug(
-                                    `[AudioCacheManager] Pre-cached audio for: ${url.slice(0, 50)}...`,
-                                );
-                            } else {
-                                rmSync(cachePath, { force: true });
-                                this.markFailed(key);
-                            }
-                        } catch {
-                            this.markFailed(key);
-                        }
+                    writeStream.once("finish", () => {
+                        writeFinished = true;
                         resolve();
                     });
-
-                    writeStream.on("error", () => {
-                        this.inProgressFiles.delete(key);
-                        this.markFailed(key);
-                        try {
-                            rmSync(cachePath, { force: true });
-                        } catch {}
+                    writeStream.once("close", resolve);
+                    writeStream.once("error", () => {
+                        downloadFailed = true;
                         resolve();
                     });
                 });
+
+                this.releaseInProgress(key);
+
+                if (downloadFailed || !writeFinished || this.canceledCacheKeys.has(key)) {
+                    this.canceledCacheKeys.delete(key);
+                    rmSync(workingCachePath, { force: true });
+                    if (downloadFailed || !writeFinished) {
+                        this.markFailed(key);
+                    }
+                    return;
+                }
+
+                const stats = statSync(workingCachePath);
+                if (stats.size < 1024) {
+                    rmSync(workingCachePath, { force: true });
+                    this.markFailed(key);
+                    return;
+                }
+
+                renameSync(workingCachePath, cachePath);
+                this.cachedFiles.set(key, {
+                    path: cachePath,
+                    lastAccess: Date.now(),
+                });
+                this.failedUrls.delete(key);
+                this.client.logger.debug(
+                    `[AudioCacheManager] Pre-cached audio for: ${url.slice(0, 50)}...`,
+                );
             } else {
                 const { exec, isBotDetectionError } = await import("../yt-dlp/index.js");
 
@@ -458,10 +500,14 @@ export class AudioCacheManager {
                     { stdio: ["ignore", "pipe", "pipe"] },
                 );
 
-                this.inProgressProcs.set(key, { proc, writeStreamPath: cachePath });
+                this.inProgressProcs.set(key, {
+                    owner: this,
+                    proc,
+                    writeStreamPath: workingCachePath,
+                });
 
                 if (!proc.stdout) {
-                    this.inProgressFiles.delete(key);
+                    this.releaseInProgress(key);
                     this.markFailed(key);
                     return;
                 }
@@ -511,90 +557,87 @@ export class AudioCacheManager {
                     });
                 }
 
-                const writeStream = createWriteStream(cachePath);
+                const writeStream = createWriteStream(workingCachePath);
+                let writeFailed = false;
+                let writeFinished = false;
                 proc.stdout.pipe(writeStream);
 
-                await new Promise<void>((resolve) => {
-                    writeStream.on("finish", () => {
-                        this.inProgressFiles.delete(key);
-                        this.inProgressProcs.delete(key);
-
-                        if (this.canceledCacheKeys.has(key)) {
-                            this.canceledCacheKeys.delete(key);
-                            try {
-                                rmSync(cachePath, { force: true });
-                            } catch {}
-                            resolve();
-                            return;
-                        }
-
-                        if (hasBotDetectionError || hasFatalError) {
-                            try {
-                                rmSync(cachePath, { force: true });
-                            } catch {}
-
-                            if (
-                                retryCount < MAX_PRE_CACHE_RETRIES &&
-                                !hasBotDetectionError &&
-                                !hasFatalError
-                            ) {
-                                setTimeout(
-                                    () => {
-                                        void this.doPreCache(url, retryCount + 1);
-                                    },
-                                    1000 * (retryCount + 1),
-                                );
-                            } else {
-                                this.markFailed(key);
-                            }
-                        } else {
-                            try {
-                                const stats = statSync(cachePath);
-                                if (stats.size >= 1024) {
-                                    this.cachedFiles.set(key, {
-                                        path: cachePath,
-                                        lastAccess: Date.now(),
-                                    });
-                                    this.failedUrls.delete(key);
-                                    this.client.logger.info(
-                                        `[AudioCacheManager] Pre-cached audio for: ${url.slice(0, 50)}...`,
-                                    );
-                                } else {
-                                    rmSync(cachePath, { force: true });
-                                    this.markFailed(key);
-                                }
-                            } catch {
-                                this.markFailed(key);
-                            }
-                        }
+                const writeComplete = new Promise<void>((resolve) => {
+                    writeStream.once("finish", () => {
+                        writeFinished = true;
                         resolve();
                     });
-
-                    writeStream.on("error", () => {
-                        this.inProgressFiles.delete(key);
-                        this.inProgressProcs.delete(key);
-                        this.markFailed(key);
-                        try {
-                            rmSync(cachePath, { force: true });
-                        } catch {}
-                        resolve();
-                    });
-
-                    proc.on("error", () => {
-                        this.inProgressFiles.delete(key);
-                        this.inProgressProcs.delete(key);
-                        this.markFailed(key);
-                        try {
-                            rmSync(cachePath, { force: true });
-                        } catch {}
+                    writeStream.once("close", resolve);
+                    writeStream.once("error", () => {
+                        writeFailed = true;
                         resolve();
                     });
                 });
+                const processComplete = new Promise<number | null>((resolve) => {
+                    proc.once("close", resolve);
+                    proc.once("error", () => {
+                        writeFailed = true;
+                        writeStream.destroy();
+                        resolve(null);
+                    });
+                });
+
+                const [, exitCode] = await Promise.all([writeComplete, processComplete]);
+                this.releaseInProgress(key);
+
+                if (this.canceledCacheKeys.has(key)) {
+                    this.canceledCacheKeys.delete(key);
+                    rmSync(workingCachePath, { force: true });
+                    return;
+                }
+
+                if (
+                    writeFailed ||
+                    !writeFinished ||
+                    exitCode !== 0 ||
+                    hasBotDetectionError ||
+                    hasFatalError
+                ) {
+                    rmSync(workingCachePath, { force: true });
+                    if (retryCount < MAX_PRE_CACHE_RETRIES && !hasBotDetectionError) {
+                        setTimeout(
+                            () => {
+                                void this.doPreCache(url, retryCount + 1);
+                            },
+                            1000 * (retryCount + 1),
+                        );
+                    } else {
+                        this.markFailed(key);
+                    }
+                    return;
+                }
+
+                const stats = statSync(workingCachePath);
+                if (stats.size < 1024) {
+                    rmSync(workingCachePath, { force: true });
+                    this.markFailed(key);
+                    return;
+                }
+
+                renameSync(workingCachePath, cachePath);
+                this.cachedFiles.set(key, {
+                    path: cachePath,
+                    lastAccess: Date.now(),
+                });
+                this.failedUrls.delete(key);
+                this.client.logger.info(
+                    `[AudioCacheManager] Pre-cached audio for: ${url.slice(0, 50)}...`,
+                );
             }
 
             void this.cleanupOldCache();
         } catch (error) {
-            this.inProgressFiles.delete(key);
+            this.releaseInProgress(key);
+            if (partialCachePath) {
+                try {
+                    rmSync(partialCachePath, { force: true });
+                } catch {}
+            }
             this.markFailed(key);
             this.client.logger.debug(
                 `[AudioCacheManager] Failed to pre-cache: ${(error as Error).message}`,
@@ -668,7 +711,11 @@ export class AudioCacheManager {
         let removedCount = 0;
         for (const url of urls) {
             const key = this.getCacheKey(url);
-            this.canceledCacheKeys.add(key);
+            const procInfo = this.inProgressProcs.get(key);
+            const ownsInProgressWork = procInfo?.owner === this;
+            if (ownsInProgressWork) {
+                this.canceledCacheKeys.add(key);
+            }
             const entry = this.cachedFiles.get(key);
             if (entry) {
                 try {
@@ -679,8 +726,7 @@ export class AudioCacheManager {
                     this.cachedFiles.delete(key);
                 } catch {}
             }
-            const procInfo = this.inProgressProcs.get(key);
-            if (procInfo) {
+            if (procInfo && ownsInProgressWork) {
                 try {
                     if (procInfo.proc && typeof procInfo.proc.kill === "function") {
                         procInfo.proc.kill("SIGKILL");
@@ -696,7 +742,9 @@ export class AudioCacheManager {
                 this.inProgressProcs.delete(key);
             }
 
-            this.inProgressFiles.delete(key);
+            if (ownsInProgressWork) {
+                this.inProgressFiles.delete(key);
+            }
             this.failedUrls.delete(key);
             const queueIndex = this.preCacheQueue.indexOf(url);
             if (queueIndex !== -1) {

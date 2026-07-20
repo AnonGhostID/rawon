@@ -197,6 +197,12 @@ export async function play(
                     } catch (_) {}
                 });
 
+                streamResult.stream.once("error", (error: Error) => {
+                    queue.client.logger.error("[PLAY_HANDLER][SOURCE_STREAM_ERROR]", error);
+                    queue.markPlaybackStreamFailed(error);
+                    ffmpegStream.destroy();
+                });
+
                 try {
                     streamResult.stream.pipe(ffmpegStream);
                 } catch (e) {

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync, chmodSync, accessSync, constants } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync, chmodSync, accessSync, constants } from "node:fs";
 import nodePath from "node:path";
 import process from "node:process";
 import got from "got";
@@ -42,6 +42,7 @@ function ensureExecutable() {
 
 function args(url, options, cookiesPath) {
     const optArgs = ["--js-runtimes", "node"];
+    let temporaryCookiesPath = null;
 
     optArgs.push(
         ...Object.entries(options)
@@ -59,10 +60,11 @@ function args(url, options, cookiesPath) {
     const useCookies = effectiveCookiesPath && existsSync(effectiveCookiesPath);
     
     if (useCookies) {
-        const tempCookiesPath = effectiveCookiesPath + ".ytdlp-tmp";
+        const tempCookiesPath = `${effectiveCookiesPath}.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.ytdlp-tmp`;
         try {
             copyFileSync(effectiveCookiesPath, tempCookiesPath);
             optArgs.push("--cookies", tempCookiesPath);
+            temporaryCookiesPath = tempCookiesPath;
         } catch {
             optArgs.push("--cookies", effectiveCookiesPath);
         }
@@ -73,7 +75,7 @@ function args(url, options, cookiesPath) {
         optArgs.push("--extractor-args", extractorArgs);
     }
 
-    return [url, ...optArgs];
+    return { values: [url, ...optArgs], temporaryCookiesPath };
 }
 
 function json(str) {
@@ -160,10 +162,23 @@ export async function downloadExecutable() {
 
 }
 
-export const exec = (url, options = {}, spawnOptions = {}, cookiesPath = null) => spawn(exePath, args(url, options, cookiesPath), {
-    windowsHide: true,
-    ...spawnOptions
-});
+export const exec = (url, options = {}, spawnOptions = {}, cookiesPath = null) => {
+    const processArgs = args(url, options, cookiesPath);
+    const proc = spawn(exePath, processArgs.values, {
+        windowsHide: true,
+        ...spawnOptions
+    });
+
+    if (processArgs.temporaryCookiesPath) {
+        proc.once("close", () => {
+            try {
+                unlinkSync(processArgs.temporaryCookiesPath);
+            } catch {}
+        });
+    }
+
+    return proc;
+};
 
 export function startAutoUpdater(client) {
     if (autoUpdateTimer) return;
